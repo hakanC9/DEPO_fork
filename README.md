@@ -17,3 +17,18 @@ make
 The tools available at the moment:
 - Static Energy Profiler (StEP) `./build/StEP`
 - Dynamic Energy-Performance Optimizer `./build/DEPO`
+
+
+# Known dependencies
+
+Dependency added on Jan 2020:
+```
+sudo apt-get install libboost-all-dev
+```
+
+Since Feb 2020 project uses cmake >= v 3.10.
+
+Dependency added on Aug 2021
+```
+sudo apt install libssl-dev
+```
