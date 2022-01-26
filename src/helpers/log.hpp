@@ -1,0 +1,72 @@
+#pragma once
+#include "power_and_perf_result.hpp"
+
+static inline
+std::string logCurrentResultLine(
+    PowAndPerfResult& curr,
+    PowAndPerfResult& first,
+    double k,
+    bool noNewLine = false)
+{
+    std::stringstream sstream;
+    if (curr.pCap < 0.0) {
+        sstream << "refer.\t";
+    } else {
+        sstream << curr.pCap << "\t";
+    }
+    sstream << std::fixed << std::setprecision(2)
+              << curr.energy << "\t"
+              << curr.avP << "\t"
+              << curr.filteredP << "\t"
+              << std::setprecision(3)
+              << curr.getInstrPerSecond() / first.getInstrPerSecond() << "\t"
+              << curr.getEnergyPerInstr() / first.getEnergyPerInstr() << "\t"
+              // since we seek for min Et and dynamic metric is looking for
+              // max of its dynamic version, below for loging purposes the order
+              // of division is swaped as it is basically inversion of the relative
+              // dynamic metric
+              << first.getEnergyTimeProd() / curr.getEnergyTimeProd() << "\t"
+              << curr.checkPlusMetric(first, k);
+    if (noNewLine) {
+        sstream << std::flush;
+    } else {
+        sstream << "\n";
+    }
+    return sstream.str();
+}
+
+static inline
+std::string logCurrentGpuResultLine(
+    double timeInMs,
+    PowAndPerfResult& curr,
+    const PowAndPerfResult& reference,
+    double k = 2.0,
+    bool noNewLine = false)
+{
+    std::stringstream sstream;
+    double currRelativeENG = curr.getEnergyPerInstr() / reference.getEnergyPerInstr();
+    // since we seek for min Et and dynamic metric is looking for
+    // max of its dynamic version, below for loging purposes the order
+    // of division is swaped as it is basically inversion of the relative
+    // dynamic metric
+    double currRelativeEDP = reference.getEnergyTimeProd() / curr.getEnergyTimeProd();
+    sstream << timeInMs
+            << std::fixed << std::setprecision(2)
+            << "\t\t" << curr.pCap / 1000
+            << "\t\t" << curr.avP
+            << "\t\t" << curr.energy
+            // << "\t\t" << currKernelsCount
+            << "\t\t" << curr.instr
+            << std::fixed << std::setprecision(3)
+            << "\t\t" << curr.getInstrPerJoule() * 1000
+            << "\t\t" << (std::isinf(currRelativeENG) || std::isnan(currRelativeENG) ? 1.0 : currRelativeENG)
+            << "\t\t" << (std::isinf(currRelativeEDP) || std::isnan(currRelativeEDP) ? 1.0 : currRelativeEDP)
+            << "\t\t" << curr.getInstrPerSecond()
+            << "\t\t" << curr.checkPlusMetric(reference, k);
+    if (noNewLine) {
+        sstream << std::flush;
+    } else {
+        sstream << "\n";
+    }
+    return sstream.str();
+}
