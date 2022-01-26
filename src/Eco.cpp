@@ -1,0 +1,808 @@
+#include <iostream>
+#include <iomanip>
+#include "Eco.hpp"
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <cerrno>
+#include <cstring>
+#include <algorithm>
+#include <boost/filesystem.hpp>
+#include "plot_builder.hpp"
+#include "helpers/log.hpp"
+
+template <class F>
+inline auto measureDuration(F&& fun)
+{
+    const auto start = std::chrono::high_resolution_clock::now();
+    fun();
+    return std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+}
+
+constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
+
+Eco::Eco() : filter2order_(100)
+{
+    // TODO: rework below loop and verify correctness for KNL and KNM
+    // include in DirBulder
+    for (unsigned i = 0; i < cpu_.getNumPackages(); i++) {
+        packagesDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + "/");
+        if (cpu_.getAvailablePowerDomains().pp0_) {
+            pp0Dirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":0/");
+            availableDomains.insert(PowerCapDomain::PP0);
+        } else {
+            if (cpu_.getAvailablePowerDomains().dram_) {
+                dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":0/");
+                availableDomains.insert(PowerCapDomain::DRAM);
+            }
+        }
+        if (cpu_.getAvailablePowerDomains().pp1_) {
+            pp1Dirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":1/");
+            availableDomains.insert(PowerCapDomain::PP1);
+            if (cpu_.getAvailablePowerDomains().dram_) {
+                dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":2/");
+                availableDomains.insert(PowerCapDomain::DRAM);
+            }
+        } else {
+            if (cpu_.getAvailablePowerDomains().dram_ && dramDirs_.empty()) {
+                dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":1/");
+                availableDomains.insert(PowerCapDomain::DRAM);
+            }
+        }
+    }
+
+    startTime_ = std::chrono::system_clock::now();
+    availableDomains.insert(PowerCapDomain::PKG); // dirty hack assuming, that PKG domain is always available
+
+    // include in DirBulder
+    auto dir = generateUniqueResultDir();
+    outResultFileName_ = dir + "/result.csv";
+    if (cfg_.isPowerLogOn_) {
+        outPowerFileName_ = dir + "/power_log.csv";
+        outPowerFile.open(outPowerFileName_, std::ios::out | std::ios::trunc);
+        // below should not be hardcoded but depending on type of series of data
+        outPowerFile << "#time[ms]\tP_cap[W]\tPKG[W]\tSMA50\tSMA100\tSMA200\tPP0[W]\tPP1[W]\tDRAM[W]\n";
+    }
+    readAndStoreDefaultLimits();
+    defaultWatchdog = readWatchdog();
+    if (defaultWatchdog == WatchdogStatus::ENABLED) {
+        modifyWatchdog(WatchdogStatus::DISABLED);
+    }
+
+    initPcmCounters();
+    smaFilters_.emplace(FilterType::SMA50, 50);
+    smaFilters_.emplace(FilterType::SMA100, 100);
+    smaFilters_.emplace(FilterType::SMA200, 200);
+    smaFilters_.emplace(FilterType::SMA_1_S, 1000 / cfg_.msPause_);
+    smaFilters_.emplace(FilterType::SMA_2_S, 2000 / cfg_.msPause_);
+    smaFilters_.emplace(FilterType::SMA_5_S, 5000 / cfg_.msPause_);
+    smaFilters_.emplace(FilterType::SMA_10_S, 10000 / cfg_.msPause_);
+    smaFilters_.emplace(FilterType::SMA_20_S, 20000 / cfg_.msPause_);
+    checkIdlePowerConsumption();
+}
+
+Eco::~Eco() {
+    restoreDefaults();
+    modifyWatchdog(defaultWatchdog);
+    outPowerFile.close();
+    defaultConstrPKG = nullptr;
+}
+
+void Eco::initPcmCounters() {
+    m = pcm::PCM::getInstance();
+    std::cerr << "\n Resetting PMU configuration" << std::endl;
+    m->resetPMU();
+    pcm::PCM::ErrorCode status = m->program();
+    if (status != pcm::PCM::Success) {
+        std::cerr << "Unsuccesfull CPU events programming - application can not be run properly\n Exiting...\n";
+        // TODO: exception should be thrown
+    }
+}
+
+void Eco::readAndStoreDefaultLimits() {
+    auto fileExists = boost::filesystem::exists(defaultLimitsFile);
+    std::ofstream fs;
+    if(!fileExists) {
+        fs.open(defaultLimitsFile, std::ios::out | std::ios::trunc);
+    }
+    defaultConstrPKG = ConstraintsSP (new Constraints(readLimitFromFile(packagesDirs_[0] + pl0dir),
+                                                      readLimitFromFile(packagesDirs_[0] + pl1dir),
+                                                      readLimitFromFile(packagesDirs_[0] + window0dir),
+                                                      readLimitFromFile(packagesDirs_[0] + window1dir)));
+    if (!fileExists) {
+        fs << "PKG\n" << *defaultConstrPKG;
+    }
+    if (cpu_.getAvailablePowerDomains().pp0_) {
+        defaultConstrPP0 = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(pp0Dirs_[0] + pl0dir),
+                                                              readLimitFromFile(pp0Dirs_[0] + window0dir),
+                                                              readLimitFromFile(pp0Dirs_[0] + isEnabledDir)));
+        if (!fileExists) {
+            fs << "PP0\n" << *defaultConstrPP0;
+        }
+    }
+    if (cpu_.getAvailablePowerDomains().pp1_) {
+        defaultConstrPP1 = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(pp1Dirs_[0] + pl0dir),
+                                                              readLimitFromFile(pp1Dirs_[0] + window0dir),
+                                                              readLimitFromFile(pp1Dirs_[0] + isEnabledDir)));
+        if (!fileExists) {
+            fs << "PP1\n" << *defaultConstrPP1;
+        }
+    }
+    if (cpu_.getAvailablePowerDomains().dram_) {
+        defaultConstrDRAM = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(dramDirs_[0] + pl0dir),
+                                                               readLimitFromFile(dramDirs_[0] + window0dir),
+                                                               readLimitFromFile(dramDirs_[0] + isEnabledDir)));
+        if (!fileExists) {
+            fs << "DRAM\n" << *defaultConstrDRAM;
+        }
+    }
+    if (fs.is_open()) {
+        fs.close();
+    }
+}
+
+std::string Eco::generateUniqueResultDir() {
+    std::stringstream ss;
+    ss << "experiment_" << std::chrono::system_clock::to_time_t(startTime_);
+    std::string dir = ss.str();
+
+    const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    if (-1 == dir_err) {
+        printf("Error creating experiment result directory!\n");
+        exit(1);
+    }
+    return dir;
+}
+
+int Eco::readLimitFromFile (std::string fileName) {
+    std::ifstream limitFile (fileName.c_str());
+    std::string line;
+    int limit = -1;
+    if (limitFile.is_open()){
+        while ( getline (limitFile, line) ){
+            limit = atoi(line.c_str());
+        }
+        limitFile.close();
+    } else {
+        std::cerr << "cannot read the limit file: " << fileName << "\n"
+                  << "file not open\n";
+    }
+    return limit;
+}
+
+void Eco::writeLimitToFile (std::string fileName, int limit) {
+    std::ofstream outfile (fileName.c_str(), std::ios::out | std::ios::trunc);
+    if (outfile.is_open()){
+        outfile << limit;
+    } else {
+        std::cerr << "cannot write the limit to file " << fileName << "\n"
+                  << "file not open\n";
+    }
+    outfile.close();
+}
+
+void Eco::restoreDefaults () {
+    currentPowerCapPKG_ = DEFAULT_LIMIT;
+    //assume that both PKGs has the same limits
+    for (auto& currentPkgDir : packagesDirs_) {
+        writeLimitToFile (currentPkgDir + pl0dir, defaultConstrPKG->longPower);
+        writeLimitToFile (currentPkgDir + pl1dir, defaultConstrPKG->shortPower);
+        writeLimitToFile (currentPkgDir + window0dir, defaultConstrPKG->longWindow);
+        writeLimitToFile (currentPkgDir + window1dir, defaultConstrPKG->shortWindow);
+    }
+    for (auto& currentPP0dir : pp0Dirs_) {
+        writeLimitToFile (currentPP0dir + pl0dir, defaultConstrPP0->powerLimit);
+        writeLimitToFile (currentPP0dir + window0dir, defaultConstrPP0->timeWindow);
+        writeLimitToFile (currentPP0dir + isEnabledDir, defaultConstrPP0->isEnabled);
+    }
+    for (auto& currentPP1dir : pp1Dirs_) {
+        writeLimitToFile (currentPP1dir + pl0dir, defaultConstrPP1->powerLimit);
+        writeLimitToFile (currentPP1dir + window0dir, defaultConstrPP1->timeWindow);
+        writeLimitToFile (currentPP1dir + isEnabledDir, defaultConstrPP1->isEnabled);
+    }
+    for (auto& currentDRAMdir : dramDirs_) {
+        writeLimitToFile (currentDRAMdir + pl0dir, defaultConstrDRAM->powerLimit);
+        writeLimitToFile (currentDRAMdir + window0dir, defaultConstrDRAM->timeWindow);
+        writeLimitToFile (currentDRAMdir + isEnabledDir, defaultConstrDRAM->isEnabled);
+    }
+}
+
+void Eco::setPowerCap(int cap, Domain dom) {
+    auto&& numPkgs = cpu_.getNumPackages(); // packagesDirs_.size();
+    auto singlePKGcap = cap / numPkgs;
+    switch (dom) {
+        case PowerCapDomain::PKG :
+            setLongTimeWindow(defaultConstrPKG->longWindow/10); // set to 100ms
+            for (auto& curentPkgDir : packagesDirs_) {
+                writeLimitToFile(curentPkgDir + pl0dir, singlePKGcap);
+                //TODO: rework below temporary solution
+                //      move current cap to power interface class
+                //      along with this whole method setPowerCap
+                currentPowerCapPKG_ = (double)cap / 1000000;
+            }
+            break;
+        case PowerCapDomain::PP0 :
+            for (auto& curentPP0dir : pp0Dirs_) {
+                writeLimitToFile(curentPP0dir + pl0dir, cap);
+                writeLimitToFile(curentPP0dir + isEnabledDir, 1);
+            }
+            break;
+        case PowerCapDomain::PP1 :
+            for (auto& curentPP1dir : pp1Dirs_) {
+                writeLimitToFile(curentPP1dir + pl0dir, cap);
+                writeLimitToFile(curentPP1dir + isEnabledDir, 1);
+            }
+            break;
+        case PowerCapDomain::DRAM :
+            for (auto& curentDRAMdir : dramDirs_) {
+                writeLimitToFile(curentDRAMdir + pl0dir, cap);
+                writeLimitToFile(curentDRAMdir + isEnabledDir, 1);
+            }
+            break;
+        default :
+            break;
+    }
+}
+
+std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
+    std::vector<int> powerLimitsVec;
+
+    int lowPowLimit_uW = (int)(idleAvPow[dom] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
+    lowPowLimit_uW = lowPowLimit_uW; // TODO: don't use hack
+    // TODO: this is hack, should be handled by using power budget (power cap) on each pkg, not by division here
+
+    int highPowLimit_uW = cpu_.getNumPackages() * defaultConstrPKG->longPower;//(int)(highPowW * 1000000 + 0.5); // same
+    int step = ((highPowLimit_uW - lowPowLimit_uW)/ 100) * cfg_.percentStep_;
+    for (int limit_uW = highPowLimit_uW; limit_uW > lowPowLimit_uW; limit_uW -= step) {
+        powerLimitsVec.push_back(limit_uW);
+    }
+    std::cout << "Vector generated, length: " << powerLimitsVec.size() << "\n";
+    return powerLimitsVec;
+}
+
+using MS = std::chrono::milliseconds;
+
+void Eco::storeDataPointToFilters(double currPower) {
+    for (auto&& filter : smaFilters_) {
+        filter.second.storeDataPoint(currPower);
+    }
+}
+
+void Eco::raplSample() {
+    devStateGlobal_.sample();
+    pprevSMA_ = prevSMA_;
+    filter2order_.storeDataPoint(smaFilters_.at(FilterType::SMA_20_S).getSMA());
+    auto currPower = devStateGlobal_.getCurrentPower(Domain::PKG);
+    storeDataPointToFilters(currPower);
+    auto currSMA = smaFilters_.at(FilterType::SMA_20_S).getSMA();
+    optimizationTrigger_ = filter2order_.getCleanedRelativeError() < 0.03;
+    if (outPowerFile.is_open()) {
+        outPowerFile << std::fixed << std::setprecision(4)
+                     << std::chrono::duration_cast<MS>(
+                         std::chrono::high_resolution_clock::now() - startTime_).count()
+                    //  << std::chrono::system_clock::to_time_t(std::chrono::high_resolution_clock::now())
+                     << "\t" << currentPowerCapPKG_ << "\t"
+                     << currPower << "\t"
+                     << currSMA << "\t"
+                     << filter2order_.getSMA() << "\t"
+                     << filter2order_.getCleanedRelativeError() << "\t"
+                     << devStateGlobal_.getCurrentPower(Domain::PP0) << "\t"
+                     << devStateGlobal_.getCurrentPower(Domain::PP1) << "\t"
+                     << devStateGlobal_.getCurrentPower(Domain::DRAM) << "\t"
+                     << devStateGlobal_.getCurrentPower(Domain::PP1) << "\t"
+                     << std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::high_resolution_clock::now().time_since_epoch()).count()
+                     << std::endl;
+    }
+}
+
+void Eco::checkIdlePowerConsumption() {
+    std::cout << "\nChecking idle average power consumption for " << cfg_.idleCheckTime_ << "s.\n";
+    for (auto i = 0; i < cfg_.idleCheckTime_ * 1000; i += cfg_.msPause_) {
+        if (!(i%1000)) std::cout << "." << std::flush;
+        raplSample();
+        usleep(cfg_.msPause_ * 1000);
+    }
+    std::cout << FLUSH_AND_RETURN;
+    // TODO: assign structure object, not each element separately
+    idleAvPow[Domain::PKG] = devStateGlobal_.getTotalAveragePower(Domain::PKG);
+    idleAvPow[Domain::PP0] = devStateGlobal_.getTotalAveragePower(Domain::PP0);
+    idleAvPow[Domain::PP1] = devStateGlobal_.getTotalAveragePower(Domain::PP1);
+    idleAvPow[Domain::DRAM] = devStateGlobal_.getTotalAveragePower(Domain::DRAM);
+    std::cout << std::fixed << std::setprecision(3)
+              << "\nIdle average power consumption:\n"
+              << "\t PKG: " << idleAvPow[Domain::PKG] << " W\n"
+              << "\t PP0: " << idleAvPow[Domain::PP0] << " W\n"
+              << "\t PP1: " << idleAvPow[Domain::PP1] << " W\n"
+              << "\tDRAM: " << idleAvPow[Domain::DRAM] << " W\n";
+}
+
+void Eco::singleAppRunAndPowerSample(char* const* argv) {
+    devStateGlobal_.resetDevice();
+
+    int fd = open("EP_stdout.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0) { perror("open"); abort(); }
+    pid_t childProcId = fork();
+    if (childProcId >= 0) { //fork successful
+        if (childProcId == 0) { // child process
+            mainAppProcess(argv, fd);
+        }
+        else { // parent process
+            int status = 1;
+            waitpid(childProcId, &status, WNOHANG);
+            if(cfg_.powerSampleOn_) {
+                while (status) {
+                    usleep(cfg_.msPause_ * 1000);
+                    raplSample();
+                    waitpid(childProcId, &status, WNOHANG);
+                }
+            }
+        }
+    } else {
+        std::cerr << "fork failed" << std::endl;
+        // TODO: handle errors
+        // return 1;
+    }
+}
+
+void Eco::idleSample(int idleTimeS) {
+    justSample(idleTimeS);
+}
+
+void Eco::justSample(int timeS) {
+    int delayUS = timeS * 1000 * 1000;
+    for (int i = 0; i <= delayUS; i+= cfg_.usTestPhasePeriod_) {
+        checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
+    }
+}
+
+void Eco::localPowerSample(int usPeriod) {
+    auto pause = cfg_.msPause_ * 1000;
+    while (usPeriod > 0){
+        usleep(pause);
+        raplSample();
+        devStateLocal_.sample();
+        usPeriod -= pause;
+    }
+}
+
+PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
+    devStateLocal_.resetDevice();
+    m->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
+    localPowerSample(usPeriod);
+    m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
+
+    return PowAndPerfResult((double)getInstructionsRetired(SysBeforeState, SysAfterState)/1000000,
+                            (double)usPeriod/1000000,
+                            currentPowerCapPKG_,
+                            devStateLocal_.getTotalEnergy(Domain::PKG),
+                            devStateLocal_.getTotalAveragePower(Domain::PKG),
+                            getFilteredPower());
+}
+
+double Eco::getFilteredPower() {
+    return smaFilters_.at(activeFilter_).getSMA();
+}
+
+PowAndPerfResult Eco::setCapAndMeasure(int cap,
+                                       int usPeriod) {
+    setPowerCap(cap);
+    return checkPowerAndPerformance(usPeriod);
+}
+
+// try to exclude printing from ECO
+static inline
+void printLine() {
+    std::cout << "-----------------------------------------------"
+              << "---------------------------------------------\n"; 
+}
+
+static inline
+void printHeader() {
+    printLine();
+    std::cout << "Cap\tE\tP\tfilterP\tips\tmin(E)\tmin(Et)\tEDS\n";
+    printLine();
+}
+
+static inline
+void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b) {
+    std::cout << "--------------------------------\n"
+              << "Current GSS range: |"
+              << a/1000000 << " "
+              << leftCandidate/1000000 << " "
+              << rightCandidate/1000000 << " "
+              << b/1000000 << "|\n"
+              << "--------------------------------\n";
+}
+
+void Eco::reportResult(double waitTime, double testTime) {
+    auto&& energyVec = devStateGlobal_.getTotalEnergyVec(Domain::PKG);
+    auto&& totalE = devStateGlobal_.getTotalEnergy(Domain::PKG);
+    auto&& totalTime = devStateGlobal_.getTotalTime();
+    std::cout << "Total E: " << totalE;
+    int pkgID = 0;
+    for (auto&& pkgE : energyVec) {
+        pkgID++;
+        std::cout << "\nPKG" << pkgID << ": " << pkgE << ", (" << (pkgE/totalE)*100 << "%)";
+    }
+    std::cout << "\nTotal P: " << devStateGlobal_.getTotalAveragePower(Domain::PKG) <<
+                 "\nTotal t: " << totalTime << "s\n";
+    if (waitTime != 0.0 || testTime != 0.0) {
+        std::cout << "Wait time: " << waitTime << "s, (" << (waitTime/totalTime)*100 << "%)\n"
+                  << "Test time: " << testTime << "s, (" << (testTime/totalTime)*100 << "%)\n";
+    }
+}
+
+void Eco::waitPhase(int& status, int childPID) {
+    waitpid(childPID, &status, WNOHANG);
+    optimizationTrigger_ = false; // reset trigger before workload starts
+    while (!optimizationTrigger_ && status) {
+        // wait until application runs homogenous workload (skip computation start up)
+        auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
+        std::cout << FLUSH_AND_RETURN
+                  << logCurrentResultLine(papResult, papResult, cfg_.k_, true /* no new line */);
+    }
+    std::cout << "\n";
+    printLine();
+}
+
+int Eco::testPhase(
+    int& highLimit_uW,
+    int& lowLimit_uW,
+    TargetMetric metric,
+    SearchType searchType,
+    PowAndPerfResult& refResult)
+{
+    highLimit_uW = adjustHighPowLimit(refResult, highLimit_uW);
+    std::cout << logCurrentResultLine(refResult, refResult, cfg_.k_);
+    printLine();
+
+    switch (searchType) {
+        case SearchType::LINEAR_SEARCH :
+            return linearSearchForBestPowerCap(refResult,
+                                               highLimit_uW,
+                                               lowLimit_uW,
+                                               metric);
+        case SearchType::GOLDEN_SECTION_SEARCH :
+            return goldenSectionSearchForBestPowerCap(refResult,
+                                                      highLimit_uW,
+                                                      lowLimit_uW,
+                                                      metric);
+    }
+}
+
+void Eco::execPhase(
+    int powerCap_uW,
+    int& status,
+    int childPID,
+    PowAndPerfResult& refResult)
+{
+    setPowerCap(powerCap_uW);
+    printLine();
+    while (status) {
+        auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
+
+        std::cout << FLUSH_AND_RETURN;
+        std::cout << logCurrentResultLine(papResult, refResult, cfg_.k_, true /* no new line */);
+        waitpid(childPID, &status, WNOHANG);
+    }
+    std::cout << "\n";
+    printLine();
+}
+
+int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW) {
+    // check if default power cap is higher than max power cap (TDP)
+    if (currHighLimit_uW < defaultConstrPKG->longPower) {
+        currHighLimit_uW = defaultConstrPKG->longPower;
+    }
+    // reduce starting high power limit according to first result's average power
+    if ((firstResult.avP * 1000000) < (currHighLimit_uW/2)) {
+        currHighLimit_uW = (firstResult.avP * 1000000) * 2.0;
+    }
+    return currHighLimit_uW;
+}
+
+void Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor) {
+    if (dup2(stdoutFileDescriptor, 1) < 0) {
+        perror("dup2");
+        abort();
+    }
+    close(stdoutFileDescriptor);
+
+    int execStatus = execvp(argv[1], argv+1);
+    validateExecStatus(execStatus);
+}
+
+int Eco::linearSearchForBestPowerCap(
+    PowAndPerfResult& firstResult,
+    int& highLimit_uW,
+    int& lowLimit_uW,
+    TargetMetric metric)
+{
+    int bestCap = highLimit_uW;
+    auto currBestResult = firstResult;
+    int step = ((highLimit_uW - lowLimit_uW)/ 100) * cfg_.percentStep_;
+
+    for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step) {
+        auto papResult = setCapAndMeasure(limit_uW, cfg_.usTestPhasePeriod_);
+
+        std::cout << logCurrentResultLine(papResult, firstResult, cfg_.k_);
+        if (currBestResult.isRightBetter(papResult, metric)) {
+            currBestResult = std::move(papResult);
+            bestCap = limit_uW;
+        }
+    }
+    return bestCap;
+}
+
+int Eco::goldenSectionSearchForBestPowerCap(
+    PowAndPerfResult& firstResult,
+    int& highLimit_uW,
+    int& lowLimit_uW,
+    TargetMetric metric)
+{
+    int EPSILON = (highLimit_uW - lowLimit_uW)/ 100;
+    std::cout << "EPSILON: " << EPSILON/1000000 << "\n";
+    int a = lowLimit_uW;
+    int b = highLimit_uW;
+    float phi = (sqrt(5) - 1) / 2; // this is equal 0.618 and it is reverse of 1.618
+    int leftCandidate = b - int(phi * (b - a));
+    int rightCandidate = a + int(phi * (b - a));
+    logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
+    bool measureL = true;
+    bool measureR = true;
+    PowAndPerfResult tmp;
+    while ((b - a) > EPSILON) {
+        auto fL = measureL ? setCapAndMeasure(leftCandidate, cfg_.usTestPhasePeriod_) : tmp;
+        std::cout << (fL, firstResult, cfg_.k_);
+        auto fR = measureR ? setCapAndMeasure(rightCandidate, cfg_.usTestPhasePeriod_) : tmp;
+        std::cout << logCurrentResultLine(fR, firstResult, cfg_.k_);
+
+        if (!fL.isRightBetter(fR, metric)) {
+            // choose subrange [a, rightCandidate]
+            b = rightCandidate;
+            rightCandidate = leftCandidate;
+            tmp = fL;
+            measureR = false;
+            measureL = true;
+            leftCandidate = b - int(phi * (b - a));
+        } else {
+            // choose subrange [leftCandidate, b]
+            a = leftCandidate;
+            leftCandidate = rightCandidate;
+            tmp = fR;
+            measureR = true;
+            measureL = false;
+            rightCandidate = a + int(phi * (b - a));
+        }
+        logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
+    }
+    // when stop condition was met return the middle of the subrange found
+    return (a + b) / 2;
+}
+
+FinalPowerAndPerfResult Eco::runAppWithGoldenSectionSearch(
+    char* const* argv,
+    TargetMetric targerMetric)
+{
+    return runAppWithSearch(argv, targerMetric, SearchType::GOLDEN_SECTION_SEARCH);
+}
+
+FinalPowerAndPerfResult Eco::runAppWithLinearSearch(
+    char* const* argv,
+    TargetMetric targerMetric)
+{
+    return runAppWithSearch(argv, targerMetric, SearchType::LINEAR_SEARCH);
+}
+
+FinalPowerAndPerfResult Eco::runAppWithSearch(
+    char* const* argv,
+    TargetMetric targerMetric,
+    SearchType searchType,
+    int argc)
+{
+    devStateGlobal_.resetDevice();
+
+    int fd = open("redirected.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0) { perror("open"); abort(); }
+    double waitTime = 0.0, testTime = 0.0;
+    pid_t childProcId = fork();
+    if (childProcId >= 0) { //fork successful
+        if (childProcId == 0) { // child process
+            mainAppProcess(argv, fd);
+        }
+        else {              // parent process
+            int lowPowLimit_uW = (int)(idleAvPow[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
+            int highPowLimit_uW = cpu_.getNumPackages() * defaultConstrPKG->longPower;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
+            int status = 1;
+            printHeader();
+            waitTime = measureDuration([&, this] {
+                waitPhase(status, childProcId);
+            });
+            //----------------------------------------------------------------------------
+            auto firstResult = checkPowerAndPerformance(FIRST_RUN_MULTIPLIER * cfg_.usTestPhasePeriod_);
+            int bestCap;
+            testTime = measureDuration([&, this] {
+                bestCap = testPhase(highPowLimit_uW,
+                                    lowPowLimit_uW,
+                                    targerMetric,
+                                    searchType,
+                                    firstResult);
+            });
+            execPhase(bestCap, status, childProcId, firstResult);
+            restoreDefaults();
+        }
+    } else {
+        std::cerr << "fork failed" << std::endl;
+        // TODO: handle errors
+        // return 1;
+    }
+    reportResult(waitTime, testTime);
+    return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, //(double)-1,
+                                devStateGlobal_.getTotalEnergy(Domain::PKG),
+                                devStateGlobal_.getTotalAveragePower(Domain::PKG),
+                                devStateGlobal_.getTotalAveragePower(Domain::PP0),
+                                devStateGlobal_.getTotalAveragePower(Domain::PP1),
+                                devStateGlobal_.getTotalAveragePower(Domain::DRAM),
+                                TimeResult(devStateGlobal_.getTotalTime(), waitTime, testTime),
+                                0.0,
+                                0.0);
+}
+
+void Eco::setLongTimeWindow(int longTimeWindow) {
+    for (auto& curentPkgDir : packagesDirs_) {
+        writeLimitToFile (curentPkgDir + window0dir, longTimeWindow);
+    }
+}
+
+FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
+    m->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
+    singleAppRunAndPowerSample(argv);
+    m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
+
+    reportResult();
+
+    // TODO: modify this temporary fix printing reference value as max+1
+    // pass powerManagIF as a parameter to FinalPowerAndPerfResult constructor
+    return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, //(double)-1,
+                                devStateGlobal_.getTotalEnergy(Domain::PKG),
+                                devStateGlobal_.getTotalAveragePower(Domain::PKG),
+                                devStateGlobal_.getTotalAveragePower(Domain::PP0),
+                                devStateGlobal_.getTotalAveragePower(Domain::PP1),
+                                devStateGlobal_.getTotalAveragePower(Domain::DRAM),
+                                devStateGlobal_.getTotalTime(),
+                              (double)getInstructionsRetired(SysBeforeState, SysAfterState)/1000000,
+                              (double)getCycles(SysBeforeState, SysAfterState)/1000000);
+}
+
+FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int numIterations) {
+    FinalPowerAndPerfResult sum;
+    for(auto i = 0; i < cfg_.numIterations_; i++) {
+        sum += runAppWithSampling(argv);
+        std::cout << "*" << std::flush;
+    }
+    std::cout << FLUSH_AND_RETURN;
+    sum /= cfg_.numIterations_;
+    return sum;
+}
+
+void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
+    if (oneSeriesResultVec.size() == 0) {
+        oneSeriesResultVec.emplace_back(devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+                                        ref.energy,
+                                        ref.pkgPower,
+                                        ref.pp0power,
+                                        ref.pp1power,
+                                        ref.dramPower,
+                                        ref.time_,
+                                        ref.inst,
+                                        ref.cycl);
+        std::cout << "Reference run saved.\n";
+    } else {
+        std::cout << "Reference run already exists!.\n";
+    }
+}
+
+void Eco::referenceRunWithoutCaps(char* const* argv) {
+    auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
+    oneSeriesResultVec.emplace_back(defaultConstrPKG->longPower / 1000000, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+                                    avResult.energy,
+                                    avResult.pkgPower,
+                                    avResult.pp0power,
+                                    avResult.pp1power,
+                                    avResult.dramPower,
+                                    avResult.time_,
+                                    avResult.inst,
+                                    avResult.cycl);
+    std::cout << "Reference run saved.\n";
+}
+
+void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain dom) {
+    if (availableDomains.find(dom) != availableDomains.end()) {
+        stream << "#[INFO] Running tests for domain " << dom << ".\n";
+        const auto ref = oneSeriesResultVec.front(); //TODO: remove the dependency on reference run
+        stream << std::fixed << std::setprecision(3) << ref << "\n";
+        auto powerLimitsVec = generateVecOfPowerCaps(dom);
+        auto loopsToDo = powerLimitsVec.size();
+        for (auto& currentLimit : powerLimitsVec) {
+            std::cout << loopsToDo << " ";
+            setPowerCap(currentLimit, dom);
+            auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
+            auto k = getK();
+            auto mPlus = EnergyTimeResult(avResult.energy,
+                                          avResult.time_.totalTime_,
+                                          avResult.pkgPower).checkPlusMetric(ref.getEnergyAndTime(), k);
+            auto mPlusDynamic = (1.0/k) * (ref.getInstrPerSec() / avResult.getInstrPerSec()) *
+                                ((k-1.0) * (avResult.getEnergyPerInstr() / ref.getEnergyPerInstr()) + 1.0);
+            auto&& timeDelta = avResult.time_.totalTime_ - ref.time_.totalTime_;
+            oneSeriesResultVec.emplace_back((double)currentLimit / 1000000,
+                                            avResult.energy,
+                                            avResult.pkgPower,
+                                            avResult.pp0power,
+                                            avResult.pp1power,
+                                            avResult.dramPower,
+                                            avResult.time_.totalTime_,
+                                            avResult.inst,
+                                            avResult.cycl,
+                                            avResult.energy - ref.energy,
+                                            timeDelta,
+                                            100 * (avResult.energy - ref.energy) / ref.energy,
+                                            100 * (timeDelta) / ref.time_.totalTime_,
+                                            mPlus);
+            stream << oneSeriesResultVec.back() << "\t" << mPlusDynamic << "\n";
+            if (oneSeriesResultVec.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
+                break;
+            }
+            loopsToDo--;
+        }
+        restoreDefaults();
+        stream << "# PowerCap for: min(E): "
+               << std::min_element(oneSeriesResultVec.begin(),
+                                   oneSeriesResultVec.end(),
+                                   CompareFinalResultsForMinE())->powercap
+               << " W, "
+               << "min(Et): "
+               << std::min_element(oneSeriesResultVec.begin(),
+                                   oneSeriesResultVec.end(),
+                                   CompareFinalResultsForMinEt())->powercap
+               << " W, "
+               << "min(M+): "
+               << std::min_element(oneSeriesResultVec.begin(),
+                                   oneSeriesResultVec.end(),
+                                   CompareFinalResultsForMplus())->powercap
+               << " W.\n";
+    } else {
+        stream << "[INFO] Domain " << dom << " is not supproted.\n";
+    }
+}
+
+WatchdogStatus Eco::readWatchdog() {
+    if (readLimitFromFile("/proc/sys/kernel/nmi_watchdog") > 0) {
+        return WatchdogStatus::ENABLED;
+    } else {
+        return WatchdogStatus::DISABLED;
+    }
+}
+
+void Eco::modifyWatchdog(WatchdogStatus status) {
+    std::ofstream watchdog ("/proc/sys/kernel/nmi_watchdog", std::ios::out | std::ios::trunc);
+    watchdog << (status == WatchdogStatus::ENABLED) ? "1" : "0";
+    watchdog.close();
+}
+
+void Eco::plotPowerLog() {
+    std::string imgFileName = outPowerFileName_;
+    PlotBuilder p(imgFileName.replace(imgFileName.end() - 3,
+                                      imgFileName.end(),
+                                      "png"));
+    p.setPlotTitle(getCpuName() + " Power Log");
+    Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
+    Series currPKGpower (outPowerFileName_, 1, 3, "current PKG P[W]");
+    Series currSMA50power (outPowerFileName_, 1, 4, "SMA50 PKG P[W]");
+    Series currSMA100power (outPowerFileName_, 1, 5, "filtered PKG P[W]");
+    Series currSMA200power (outPowerFileName_, 1, 6, "SMA200 PKG P[W]");
+    Series currDRAMpower (outPowerFileName_, 1, 9, "current DRAM P[W]");
+    p.plotPowerLog({powerCap,
+                    currPKGpower,
+                    currDRAMpower,
+                    currSMA100power});
+}
