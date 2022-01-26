@@ -62,6 +62,7 @@ set(COMMON_LIBS
     boost_iostreams
     boost_system
     boost_filesystem
+    boost_program_options
     )
 
 # build Static Energy Profiler
