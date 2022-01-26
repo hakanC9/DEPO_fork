@@ -109,7 +109,7 @@ int main (int argc, char *argv[]) {
     for (int i=1; i<argc; i++) {
         bout <<  argv[i] << " ";
     }
-    bout << "\n" << argc;
+    bout << "\n";
 
     FinalPowerAndPerfResult result;    result = eco.runAppWithSearch(argv, metric, search);
     std::cout << "\n"

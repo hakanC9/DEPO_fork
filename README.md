@@ -32,3 +32,15 @@ Dependency added on Aug 2021
 ```
 sudo apt install libssl-dev
 ```
+
+# Exemplary usage
+
+`./build/DEPO --ls --en ./minibenchmarks/openmp/fft 1024 300`
+
+Above command shall run exemplary FFT application with DEPO and produce
+as a result `experiment_*` folder with `.csv` logs and visualised `.png`
+power log similar to below one:
+
+![exemplary power log](power_log.png)
+
+One may modify the execution parameters in `params.conf` file.
