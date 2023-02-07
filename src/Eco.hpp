@@ -32,6 +32,14 @@
 #include "helpers/data_filter.hpp"
 #include "helpers/both_stream.hpp"
 
+template <class F>
+inline auto measureDuration(F&& fun)
+{
+    const auto start = std::chrono::high_resolution_clock::now();
+    fun();
+    return std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+}
+
 static inline
 void validateExecStatus(int status) {
     if (status) {
@@ -53,6 +61,8 @@ class EcoApi
     std::string getResultFileName() const { return outResultFileName_; }
     std::string getPowerLogFileName() const { return outPowerFileName_; }
     EcoApi() = default;
+    int readLimitFromFile (std::string);
+    void writeLimitToFile (std::string , int);
     virtual ~EcoApi() = default;
   protected:
     ParamsConfig cfg_; // stores defaults values of params or reads it from params.conf
@@ -148,8 +158,6 @@ class Eco : public EcoApi
     void readAndStoreDefaultLimits();
     PowAndPerfResult setCapAndMeasure(int, int);
     void justSample(int timeS);
-    int readLimitFromFile (std::string);
-    void writeLimitToFile (std::string , int);
     void setLongTimeWindow(int);
     void reportResult(double = 0.0, double = 0.0);
     void waitPhase(int&, int);

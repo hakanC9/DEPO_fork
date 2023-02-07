@@ -15,6 +15,7 @@
 */
 
 #include "../Eco.hpp"
+#include "../gpu_eco.hpp"
 #include "../plot_builder.hpp"
 
 int main (int argc, char *argv[]) {
@@ -25,7 +26,26 @@ int main (int argc, char *argv[]) {
 	watchdog.close();
 
     std::unique_ptr<EcoApi> eco;
-    eco = std::make_unique<Eco>();
+    bool isGpu = false;
+    if (argc >= 1)
+    {
+        if(std::string(argv[1]).substr(0,6) == "--gpu=")
+        {
+            int gpuID = stoi(std::string(argv[1]).substr(6,1));
+            eco = std::make_unique<GpuEco>(gpuID);
+            // remove the --gpu flag from 1st arg
+            for (int i = 1; i < argc -1; i++)
+            {
+                argv[i] = argv[i+1];
+            }
+            argc--;
+            isGpu = true;
+        }
+        else
+        {
+        eco = std::make_unique<Eco>();
+        }
+    }
 
     std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
 
@@ -40,15 +60,21 @@ int main (int argc, char *argv[]) {
     bout << "#[W]\t[J]\t[W]"/*\t[W]\t[W]\t[W]*/ << "\t[s]"
          << "\t[Js]\t[J]\t[s]\t[%J]\t[%s]"/*\t[J/s]\t[-]\t[x1M]\t[x1M]\t[x1M/s]\t[x1M/s]\t*/ <<"[(cycl)/J]\t[(cycl/s)^2/W)]\n";
 
-
-    auto domainVec = {PowerCapDomain::PKG};//,
-                    //   PowerCapDomain::PP0,
-                    //   PowerCapDomain::PP1,
-                    //   PowerCapDomain::DRAM};
-    dynamic_cast<Eco*>(eco.get())->referenceRunWithoutCaps(argv);
-    for (auto currentDom : domainVec) {
-        dynamic_cast<Eco*>(eco.get())->runAppForEachPowercap(argv, bout, currentDom);
-        sleep(1);
+    if(!isGpu)
+    {
+        auto domainVec = {PowerCapDomain::PKG};//,
+                        //   PowerCapDomain::PP0,
+                        //   PowerCapDomain::PP1,
+                        //   PowerCapDomain::DRAM};
+        dynamic_cast<Eco*>(eco.get())->referenceRunWithoutCaps(argv);
+        for (auto currentDom : domainVec) {
+            dynamic_cast<Eco*>(eco.get())->runAppForEachPowercap(argv, bout, currentDom);
+            sleep(1);
+            }
+    }
+    else
+    {
+        dynamic_cast<GpuEco*>(eco.get())->staticEnergyProfiler(argv, argc, bout);
     }
 
     bout.flush();

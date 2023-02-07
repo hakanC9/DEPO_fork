@@ -26,13 +26,6 @@
 #include "plot_builder.hpp"
 #include "helpers/log.hpp"
 
-template <class F>
-inline auto measureDuration(F&& fun)
-{
-    const auto start = std::chrono::high_resolution_clock::now();
-    fun();
-    return std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-}
 
 constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
@@ -158,7 +151,7 @@ void Eco::readAndStoreDefaultLimits() {
 
 std::string Eco::generateUniqueResultDir() {
     std::stringstream ss;
-    ss << "experiment_" << std::chrono::system_clock::to_time_t(startTime_);
+    ss << "cpu_experiment_" << std::chrono::system_clock::to_time_t(startTime_);
     std::string dir = ss.str();
 
     const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
@@ -169,7 +162,7 @@ std::string Eco::generateUniqueResultDir() {
     return dir;
 }
 
-int Eco::readLimitFromFile (std::string fileName) {
+int EcoApi::readLimitFromFile (std::string fileName) {
     std::ifstream limitFile (fileName.c_str());
     std::string line;
     int limit = -1;
@@ -185,7 +178,7 @@ int Eco::readLimitFromFile (std::string fileName) {
     return limit;
 }
 
-void Eco::writeLimitToFile (std::string fileName, int limit) {
+void EcoApi::writeLimitToFile (std::string fileName, int limit) {
     std::ofstream outfile (fileName.c_str(), std::ios::out | std::ios::trunc);
     if (outfile.is_open()){
         outfile << limit;

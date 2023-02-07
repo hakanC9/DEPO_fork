@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(phd CXX)
 set(CMAKE_CXX_STANDARD 17)
-
+include_directories(/usr/local/cuda/include)
 include(CMakeLists.txt.in)
 
 set(OPENSSL_USE_STATIC_LIBS TRUE)
