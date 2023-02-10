@@ -1,3 +1,20 @@
+/*
+   Copyright 2022, Adam Krzywaniak.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+
+
 #pragma once
 
 #include <unistd.h>
@@ -24,7 +41,8 @@
 #include <nvml.h>
 
 static inline
-void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b) {
+void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b)
+{
     std::cout << "#--------------------------------\n"
               << "# Current GSS range: |"
               << a << " "
@@ -45,7 +63,8 @@ std::string parseArgvCommandToString(int argc, char** argv)
     return str.str();
 }
 
-std::string generateUniqueDir() {
+std::string generateUniqueDir()
+{
     std::string dir = "gpu_experiment_" +
         std::to_string(
             std::chrono::system_clock::to_time_t(
@@ -60,45 +79,53 @@ std::string generateUniqueDir() {
 }
 
 
-int long long readValueFromFile (std::string fileName) {
-    std::ifstream limitFile (fileName.c_str());
+int long long readValueFromFile (std::string fileName)
+{
+    std::ifstream file (fileName.c_str());
     std::string line;
-    long long int limit = -1;
-    if (limitFile.is_open()){
-        while ( getline (limitFile, line) ){
-            limit = atoi(line.c_str());
+    long long int value = -1;
+    if (file.is_open())
+    {
+        while ( getline (file, line) )
+        {
+            value = atoi(line.c_str());
         }
-        limitFile.close();
-    } else {
-        std::cerr << "cannot read the limit file: " << fileName << "\n"
+        file.close();
+    }
+    else
+    {
+        std::cerr << "cannot read the value from file: " << fileName << "\n"
                   << "file not open\n";
     }
-    return limit;
+    return value;
 }
 
 class CudaDevice // this class should be named "cuda device container or sth like that as it stores all the devices"
 {
   public:
     CudaDevice(int devID=0) :
-     deviceID_(devID) // and then this field shall not be a member of this class as the API allows for access to any device
+        deviceID_(devID) // and then this field shall not be a member of this class as the API allows for access to any device
     {
         int major;
         CUresult result;
-        CUdevice device{deviceID_};
+        CUdevice device {deviceID_};
 
         result = cuInit(0);
-        if (result != CUDA_SUCCESS) {
+        if (result != CUDA_SUCCESS)
+        {
             printf("Error code %d on cuInit\n", result);
             exit(-1);
         }
         result = cuDeviceGet(&device,0);
-        if (result != CUDA_SUCCESS) {
+        if (result != CUDA_SUCCESS)
+        {
             printf("Error code %d on cuDeviceGet\n", result);
             exit(-1);
         }
 
         result = cuDeviceGetAttribute (&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device);
-        if (result != CUDA_SUCCESS) {
+        if (result != CUDA_SUCCESS)
+        {
             printf("Error code %d on cuDeviceGetAttribute\n", result);
             exit(-1);
         }
@@ -118,11 +145,13 @@ class CudaDevice // this class should be named "cuda device container or sth lik
         printf("Found %d device%s\n\n", deviceCount_, deviceCount_ != 1 ? "s" : "");
         initDeviceHandles();
     }
+
     int getPowerLimit(unsigned deviceID)
     {
         unsigned currPowerLimitInMilliWatts = 0;
         nvmlReturn_t nvResult = nvmlDeviceGetEnforcedPowerLimit (deviceHandles_[deviceID], &currPowerLimitInMilliWatts);
-        if (NVML_SUCCESS != nvResult) {
+        if (NVML_SUCCESS != nvResult)
+        {
             printf("Failed to GET current power limit: %s\n", nvmlErrorString(nvResult));
             return -1;
         }
@@ -133,7 +162,8 @@ class CudaDevice // this class should be named "cuda device container or sth lik
     {
         unsigned min = 0, max = 0;
         nvmlReturn_t nvResult = nvmlDeviceGetPowerManagementLimitConstraints (deviceHandles_[deviceID], &min, &max);
-        if (NVML_SUCCESS != nvResult) {
+        if (NVML_SUCCESS != nvResult)
+        {
             printf("Failed to GET min/max power limit: %s\n", nvmlErrorString(nvResult));
         }
         return std::make_pair(min/1000, max/1000);
@@ -142,7 +172,8 @@ class CudaDevice // this class should be named "cuda device container or sth lik
     void setPowerLimit(unsigned deviceID, int limitInWatts)
     {
         nvmlReturn_t nvResult = nvmlDeviceSetPowerManagementLimit (deviceHandles_[deviceID], limitInWatts * 1000);
-        if (NVML_SUCCESS != nvResult) {
+        if (NVML_SUCCESS != nvResult)
+        {
             printf("Failed to SET current power limit %d: %s\n", limitInWatts * 1000, nvmlErrorString(nvResult));
             return;
         }
@@ -160,7 +191,8 @@ class CudaDevice // this class should be named "cuda device container or sth lik
     {
         unsigned power;
         nvmlReturn_t nvResult = nvmlDeviceGetPowerUsage(deviceHandles_[deviceID_], &power);
-        if (NVML_SUCCESS != nvResult) {
+        if (NVML_SUCCESS != nvResult)
+        {
             printf("Failed to get power usage: %s\n", nvmlErrorString(nvResult));
             return -1.0;
         }
@@ -247,8 +279,8 @@ class GpuDeviceState
             std::chrono::high_resolution_clock::now());
         // -----------------------------------------------
 
-        auto timeDelta = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
-        totalEnergySinceReset_ += next_.power_ * timeDelta / 1000;
+        auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
+        totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
         return *this;
     }
 
@@ -390,7 +422,8 @@ class GpuEco : public EcoApi
         stream << "# warmup done #\n";
         //
         FinalPowerAndPerfResult reference;
-        for(auto i = 0; i < cfg_.numIterations_; i++) {
+        for(auto i = 0; i < cfg_.numIterations_; i++)
+        {
             auto tmp = runAppWithSampling(argv, argc);
             reference += tmp;
             stream << "# " << std::fixed << std::setprecision(3) << tmp << "\n";
@@ -627,7 +660,8 @@ class GpuEco : public EcoApi
         bool measureL = true;
         bool measureR = true;
         PowAndPerfResult tmp = referenceResult;
-        while ((b - a) / 1000 > EPSILON) {
+        while ((b - a) / 1000 > EPSILON)
+        {
             auto fL = tmp;
             if (measureL)
             {

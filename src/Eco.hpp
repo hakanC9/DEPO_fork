@@ -104,9 +104,9 @@ class Eco : public EcoApi
   private:
     std::map<FilterType, DataFilter> smaFilters_;
     FilterType activeFilter_ {FilterType::SMA100};
-	pcm::SystemCounterState SysBeforeState, SysAfterState;
-	std::vector<pcm::CoreCounterState> BeforeState, AfterState;
-	std::vector<pcm::SocketCounterState> DummySocketStates;
+    pcm::SystemCounterState SysBeforeState, SysAfterState;
+    std::vector<pcm::CoreCounterState> BeforeState, AfterState;
+    std::vector<pcm::SocketCounterState> DummySocketStates;
     pcm::PCM* m;
     DataFilter filter2order_;
     Device cpu_;
