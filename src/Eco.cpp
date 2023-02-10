@@ -26,7 +26,6 @@
 #include "plot_builder.hpp"
 #include "helpers/log.hpp"
 
-
 constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
 Eco::Eco() : filter2order_(100)
@@ -287,8 +286,8 @@ void Eco::raplSample() {
     if (outPowerFile.is_open()) {
         outPowerFile << std::fixed << std::setprecision(4)
                      << std::chrono::duration_cast<MS>(
-                         std::chrono::high_resolution_clock::now() - startTime_).count()
-                    //  << std::chrono::system_clock::to_time_t(std::chrono::high_resolution_clock::now())
+                        std::chrono::high_resolution_clock::now() - startTime_).count()
+                    //   << std::chrono::system_clock::to_time_t(std::chrono::high_resolution_clock::now())
                      << "\t" << currentPowerCapPKG_ << "\t"
                      << currPower << "\t"
                      << currSMA << "\t"
@@ -533,7 +532,6 @@ int Eco::linearSearchForBestPowerCap(
 
     for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step) {
         auto papResult = setCapAndMeasure(limit_uW, cfg_.usTestPhasePeriod_);
-
         std::cout << logCurrentResultLine(papResult, firstResult, cfg_.k_);
         if (currBestResult.isRightBetter(papResult, metric)) {
             currBestResult = std::move(papResult);
@@ -562,7 +560,7 @@ int Eco::goldenSectionSearchForBestPowerCap(
     PowAndPerfResult tmp;
     while ((b - a) > EPSILON) {
         auto fL = measureL ? setCapAndMeasure(leftCandidate, cfg_.usTestPhasePeriod_) : tmp;
-        std::cout << (fL, firstResult, cfg_.k_);
+        std::cout << logCurrentResultLine(fL, firstResult, cfg_.k_);
         auto fR = measureR ? setCapAndMeasure(rightCandidate, cfg_.usTestPhasePeriod_) : tmp;
         std::cout << logCurrentResultLine(fR, firstResult, cfg_.k_);
 
@@ -672,7 +670,7 @@ FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
 
     // TODO: modify this temporary fix printing reference value as max+1
     // pass powerManagIF as a parameter to FinalPowerAndPerfResult constructor
-    return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, //(double)-1,
+    return FinalPowerAndPerfResult(cpu_.getNumPackages() * devStateGlobal_.getPkgMaxPower(), //(double)-1,
                                 devStateGlobal_.getTotalEnergy(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PP0),
@@ -733,7 +731,7 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
         auto powerLimitsVec = generateVecOfPowerCaps(dom);
         auto loopsToDo = powerLimitsVec.size();
         for (auto& currentLimit : powerLimitsVec) {
-            std::cout << loopsToDo << " ";
+            std::cout << loopsToDo-- << " ";
             setPowerCap(currentLimit, dom);
             auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
             auto k = getK();
@@ -761,7 +759,6 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
             if (oneSeriesResultVec.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
                 break;
             }
-            loopsToDo--;
         }
         restoreDefaults();
         stream << "# PowerCap for: min(E): "
@@ -814,4 +811,72 @@ void Eco::plotPowerLog() {
                     currPKGpower,
                     currDRAMpower,
                     currSMA100power});
+}
+
+void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
+    PowerCapDomain dom = PowerCapDomain::PKG;
+    std::vector<FinalPowerAndPerfResult> resultsVec;
+    const auto&& warmup = runAppWithSampling(argv);
+    stream << "# " << std::fixed << std::setprecision(3) << warmup << "\n";
+    stream << "# warmup done #\n";
+    //
+    FinalPowerAndPerfResult reference;
+    for(auto i = 0; i < cfg_.numIterations_; i++)
+    {
+        auto tmp = runAppWithSampling(argv);
+        reference += tmp;
+        stream << "# " << std::fixed << std::setprecision(3) << tmp << "\n";
+    }
+    reference /= cfg_.numIterations_;
+    //
+    resultsVec.push_back(reference);
+    stream << reference << "\n";
+    auto powerLimitsVec = generateVecOfPowerCaps(dom);
+    auto loopsToDo = powerLimitsVec.size();
+    for (auto& currentLimit : powerLimitsVec) {
+        std::cout << loopsToDo-- << " ";
+        setPowerCap(currentLimit, dom);
+        auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
+        auto k = getK();
+        auto mPlus = EnergyTimeResult(avResult.energy,
+                                        avResult.time_.totalTime_,
+                                        avResult.pkgPower).checkPlusMetric(reference.getEnergyAndTime(), k);
+        auto mPlusDynamic = (1.0/k) * (reference.getInstrPerSec() / avResult.getInstrPerSec()) *
+                            ((k-1.0) * (avResult.getEnergyPerInstr() / reference.getEnergyPerInstr()) + 1.0);
+        auto&& timeDelta = avResult.time_.totalTime_ - reference.time_.totalTime_;
+        resultsVec.emplace_back((double)currentLimit / 1000000,
+                                 avResult.energy,
+                                 avResult.pkgPower,
+                                 avResult.pp0power,
+                                 avResult.pp1power,
+                                 avResult.dramPower,
+                                 avResult.time_.totalTime_,
+                                 avResult.inst,
+                                 avResult.cycl,
+                                 avResult.energy - reference.energy,
+                                 timeDelta,
+                                 100 * (avResult.energy - reference.energy) / reference.energy,
+                                 100 * (timeDelta) / reference.time_.totalTime_,
+                                 mPlus);
+        stream << resultsVec.back() << "\t" << mPlusDynamic << "\n";
+        if (resultsVec.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
+            break;
+        }
+    }
+    restoreDefaults();
+    stream << "# PowerCap for: min(E): "
+            << std::min_element(resultsVec.begin(),
+                                resultsVec.end(),
+                                CompareFinalResultsForMinE())->powercap
+            << " W, "
+            << "min(Et): "
+            << std::min_element(resultsVec.begin(),
+                                resultsVec.end(),
+                                CompareFinalResultsForMinEt())->powercap
+            << " W, "
+            << "min(M+): "
+            << std::min_element(resultsVec.begin(),
+                                resultsVec.end(),
+                                CompareFinalResultsForMplus())->powercap
+            << " W.\n";
 }

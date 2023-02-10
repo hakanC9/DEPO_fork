@@ -86,6 +86,7 @@ class Eco : public EcoApi
     void storeReferenceRun(FinalPowerAndPerfResult&);
     void plotPowerLog() override;
     std::string getCpuName() { return cpu_.getCPUname(); }
+    void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
     Eco();
     virtual ~Eco();

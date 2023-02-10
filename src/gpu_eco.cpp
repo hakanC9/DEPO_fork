@@ -16,6 +16,67 @@
 
 #include "gpu_eco.hpp"
 
+static inline
+void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b)
+{
+    std::cout << "#--------------------------------\n"
+              << "# Current GSS range: |"
+              << a << " "
+              << leftCandidate << " "
+              << rightCandidate << " "
+              << b << "|\n"
+              << "#--------------------------------\n";
+}
+
+static inline
+std::string parseArgvCommandToString(int argc, char** argv)
+{
+    std::stringstream str;
+    str << "# ";
+    for (int i=1; i < argc; i++) {
+        str << argv[i] << " ";
+    }
+    str << "\n";
+    return str.str();
+}
+
+static inline
+std::string generateUniqueDir()
+{
+    std::string dir = "gpu_experiment_" +
+        std::to_string(
+            std::chrono::system_clock::to_time_t(
+                  std::chrono::high_resolution_clock::now()));
+    dir += "/";
+    const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    if (-1 == dir_err) {
+        printf("Error creating experiment result directory!\n");
+        exit(1);
+    }
+    return dir;
+}
+
+static inline
+int long long readValueFromFile (std::string fileName)
+{
+    std::ifstream file (fileName.c_str());
+    std::string line;
+    long long int value = -1;
+    if (file.is_open())
+    {
+        while ( getline (file, line) )
+        {
+            value = atoi(line.c_str());
+        }
+        file.close();
+    }
+    else
+    {
+        std::cerr << "cannot read the value from file: " << fileName << "\n"
+                  << "file not open\n";
+    }
+    return value;
+}
 
 CudaDevice::CudaDevice(int devID) :
     deviceID_(devID) // and then this field shall not be a member of this class as the API allows for access to any device
@@ -205,8 +266,6 @@ void GpuDeviceState::resetState()
 }
 
 
-
-
 GpuEco::GpuEco(int deviceID) : deviceID_(deviceID)
 {
     gpu_ = std::make_shared<CudaDevice>(deviceID);
@@ -227,9 +286,9 @@ GpuEco::~GpuEco()
     outPowerFile_.close();
 }
 
-void GpuEco::idleSample(int milliseconds)
+void GpuEco::idleSample(int sleepPeriodInMs)
 {
-    usleep(milliseconds * 1000);
+    usleep(sleepPeriodInMs * 1000);
     deviceState_->sample();
     auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
     *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), tmpResult, tmpResult);

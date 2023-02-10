@@ -62,15 +62,17 @@ int main (int argc, char *argv[]) {
 
     if(!isGpu)
     {
-        auto domainVec = {PowerCapDomain::PKG};//,
-                        //   PowerCapDomain::PP0,
-                        //   PowerCapDomain::PP1,
-                        //   PowerCapDomain::DRAM};
-        dynamic_cast<Eco*>(eco.get())->referenceRunWithoutCaps(argv);
-        for (auto currentDom : domainVec) {
-            dynamic_cast<Eco*>(eco.get())->runAppForEachPowercap(argv, bout, currentDom);
-            sleep(1);
-            }
+        // auto domainVec = {PowerCapDomain::PKG};//,
+        //                 //   PowerCapDomain::PP0,
+        //                 //   PowerCapDomain::PP1,
+        //                 //   PowerCapDomain::DRAM};
+        // dynamic_cast<Eco*>(eco.get())->referenceRunWithoutCaps(argv);
+        // for (auto currentDom : domainVec)
+        // {
+        //     dynamic_cast<Eco*>(eco.get())->runAppForEachPowercap(argv, bout, currentDom);
+        //     sleep(1);
+        // }
+        dynamic_cast<Eco*>(eco.get())->staticEnergyProfiler(argv, bout);
     }
     else
     {

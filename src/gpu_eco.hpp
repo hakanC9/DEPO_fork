@@ -40,72 +40,11 @@
 #include <cuda.h>
 #include <nvml.h>
 
-static inline
-void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b)
-{
-    std::cout << "#--------------------------------\n"
-              << "# Current GSS range: |"
-              << a << " "
-              << leftCandidate << " "
-              << rightCandidate << " "
-              << b << "|\n"
-              << "#--------------------------------\n";
-}
-
-static inline
-std::string parseArgvCommandToString(int argc, char** argv)
-{
-    std::stringstream str;
-    str << "# ";
-    for (int i=1; i < argc; i++) {
-        str << argv[i] << " ";
-    }
-    str << "\n";
-    return str.str();
-}
-
-static inline
-std::string generateUniqueDir()
-{
-    std::string dir = "gpu_experiment_" +
-        std::to_string(
-            std::chrono::system_clock::to_time_t(
-                  std::chrono::high_resolution_clock::now()));
-    dir += "/";
-    const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    if (-1 == dir_err) {
-        printf("Error creating experiment result directory!\n");
-        exit(1);
-    }
-    return dir;
-}
-
-static inline
-int long long readValueFromFile (std::string fileName)
-{
-    std::ifstream file (fileName.c_str());
-    std::string line;
-    long long int value = -1;
-    if (file.is_open())
-    {
-        while ( getline (file, line) )
-        {
-            value = atoi(line.c_str());
-        }
-        file.close();
-    }
-    else
-    {
-        std::cerr << "cannot read the value from file: " << fileName << "\n"
-                  << "file not open\n";
-    }
-    return value;
-}
 
 class CudaDevice // this class should be named "cuda device container or sth like that as it stores all the devices"
 {
   public:
-    CudaDevice(int devID=0);
+    CudaDevice(int devID = 0);
 
     int getPowerLimit(unsigned deviceID);
     void setPowerLimit(unsigned deviceID, int limitInWatts);
@@ -173,7 +112,7 @@ class GpuEco : public EcoApi
     GpuEco(int deviceID = 0);
     virtual ~GpuEco();
 
-    void idleSample(int milliseconds) override;
+    void idleSample(int sleepPeriodInMs) override;
 
     FinalPowerAndPerfResult runAppWithSampling(char* const* argv, int argc) override;
     void staticEnergyProfiler(char* const* argv, int argc, BothStream& stream);
