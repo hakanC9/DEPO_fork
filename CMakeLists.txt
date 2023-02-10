@@ -13,6 +13,8 @@ add_library(
     eco
     src/Eco.hpp
     src/Eco.cpp
+    src/gpu_eco.hpp
+    src/gpu_eco.cpp
     src/power_if/Rapl.hpp
     src/power_if/Rapl.cpp
     src/device/Device.hpp
@@ -63,6 +65,8 @@ set(COMMON_LIBS
     boost_system
     boost_filesystem
     boost_program_options
+    nvidia-ml
+    cuda
     )
 
 # build Static Energy Profiler
@@ -73,8 +77,6 @@ add_executable(
 
 target_link_libraries(
     StEP
-    nvidia-ml
-    cuda
     ${COMMON_LIBS}
     )
 
