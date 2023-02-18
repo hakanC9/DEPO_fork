@@ -32,6 +32,7 @@ Device::Device() {
     detectCPU();
     detectPackages();
     detectPowerCapsAvailability();
+	std::cout << "INFO: Device constructor called!\n";
 }
 
 int Device::getNumPackages() {
@@ -98,7 +99,7 @@ void Device::detectCPU() {
 		outStream.close();
 	}
 	if (family == 6) {
-		std::cout << "Detected suported CPU\nModel: " << mapCpuFamilyName(model_) << "\n";
+		std::cout << "Detected suported CPU family\nModel: " << mapCpuFamilyName(model_) << "\n";
 	}
 }
 
@@ -157,6 +158,13 @@ std::string Device::mapCpuFamilyName(int& model){
 			return std::string("Skylake");
 		case CPU_SKYLAKE_X:
 			return std::string("Skylake-X");
+		case CPU_ICELAKE_U:
+		case CPU_ICELAKE_Y:
+			return std::string("Icelake");
+		case CPU_ICELAKE_DE:
+			return std::string("Icelake-DE");
+		case CPU_ICELAKE_SP:
+			return std::string("Icelake-SP");
 		case CPU_KABYLAKE:
 		case CPU_KABYLAKE_MOBILE:
 			return std::string("Kaby Lake");
@@ -188,6 +196,7 @@ void Device::detectPowerCapsAvailability() {
 
 		case CPU_HASWELL_EP:
 		case CPU_BROADWELL_EP: // according to real system (PC Xeon E5) there is no PP0
+		case CPU_ICELAKE_SP: // verified with real system
 		case CPU_SKYLAKE_X: // TODO: To be checked on Skylake X if possible.
 			devicePowerProfile_ = AvailablePowerDomains(false, false, true, false, true);
 			break;

@@ -1,3 +1,7 @@
+// TODO: update the file with new models
+// according to: https://en.wikichip.org/wiki/intel/cpuid#Family_6
+
+
 #define CPU_SANDYBRIDGE			42
 #define CPU_SANDYBRIDGE_EP		45
 #define CPU_IVYBRIDGE			58
@@ -13,6 +17,10 @@
 #define CPU_SKYLAKE				78
 #define CPU_SKYLAKE_HS			94
 #define CPU_SKYLAKE_X			85
+#define CPU_ICELAKE_U			126
+#define CPU_ICELAKE_Y			125
+#define CPU_ICELAKE_DE			108
+#define CPU_ICELAKE_SP			106
 #define CPU_KNIGHTS_LANDING		87
 #define CPU_KNIGHTS_MILL		133
 #define CPU_KABYLAKE_MOBILE		142
