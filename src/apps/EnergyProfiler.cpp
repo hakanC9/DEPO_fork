@@ -43,7 +43,7 @@ int main (int argc, char *argv[]) {
         }
         else
         {
-        eco = std::make_unique<Eco>();
+        eco = std::make_unique<Eco>(std::make_shared<Device>());
         }
     }
 

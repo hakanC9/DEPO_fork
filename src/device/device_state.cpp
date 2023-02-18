@@ -18,9 +18,12 @@
 
 #include <set>
 
-DeviceState::DeviceState() {
-    for (auto&& cpuCore : cpu.pkgToFirstCoreMap_) {
-        raplVec_.emplace_back(cpuCore, cpu.getAvailablePowerDomains());
+DeviceState::DeviceState(std::shared_ptr<Device> d) :
+    device_(d)
+{
+    for (auto&& cpuCore : device_->pkgToFirstCoreMap_) {
+        raplVec_.emplace_back(cpuCore, device_->getAvailablePowerDomains());
+        std::cout << "INFO: created RAPL object for core " << cpuCore << " in DeviceState.\n";
     }
 }
 

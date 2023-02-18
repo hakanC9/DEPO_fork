@@ -117,7 +117,7 @@ int main (int argc, char *argv[]) {
     std::tie(metric, search) = parseArgs(optionsMap);
     cleanArgv(argc, argv);
 
-    Eco eco;
+    Eco eco(std::make_shared<Device>());
     std::ofstream outResultFile (eco.getResultFileName(), std::ios::out | std::ios::trunc);
 
     BothStream bout(outResultFile);

@@ -21,7 +21,7 @@
 
 class DeviceState {
 public:
-    DeviceState();
+    DeviceState(std::shared_ptr<Device>);
     ~DeviceState() {}
     double getTotalAveragePower(Domain d);
     double getTotalEnergy(Domain d);
@@ -33,6 +33,6 @@ public:
     double getCurrentPower(Domain d);
 
 private:
-    Device cpu;
+    std::shared_ptr<Device> device_;
     std::vector<Rapl> raplVec_;
 };

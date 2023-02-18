@@ -85,10 +85,10 @@ class Eco : public EcoApi
     FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int = 1) override;
     void storeReferenceRun(FinalPowerAndPerfResult&);
     void plotPowerLog() override;
-    std::string getCpuName() { return cpu_.getCPUname(); }
+    std::string getCpuName() { return device_->getCPUname(); }
     void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
-    Eco();
+    Eco(std::shared_ptr<Device>);
     virtual ~Eco();
 
   protected:
@@ -110,7 +110,7 @@ class Eco : public EcoApi
     std::vector<pcm::SocketCounterState> DummySocketStates;
     pcm::PCM* m;
     DataFilter filter2order_;
-    Device cpu_;
+    std::shared_ptr<Device> device_;
     CrossDomainQuantity idleAvPow;
     std::set<PowerCapDomain> availableDomains;
     double pprevSMA_ {0.0}, prevSMA_ {0.0};

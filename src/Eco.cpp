@@ -28,30 +28,31 @@
 
 constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
-Eco::Eco() : filter2order_(100)
+Eco::Eco(std::shared_ptr<Device> d) :
+    filter2order_(100), device_(d), devStateGlobal_(d), devStateLocal_(d)
 {
     // TODO: rework below loop and verify correctness for KNL and KNM
     // include in DirBulder
-    for (unsigned i = 0; i < cpu_.getNumPackages(); i++) {
+    for (unsigned i = 0; i < device_->getNumPackages(); i++) {
         packagesDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + "/");
-        if (cpu_.getAvailablePowerDomains().pp0_) {
+        if (device_->getAvailablePowerDomains().pp0_) {
             pp0Dirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":0/");
             availableDomains.insert(PowerCapDomain::PP0);
         } else {
-            if (cpu_.getAvailablePowerDomains().dram_) {
+            if (device_->getAvailablePowerDomains().dram_) {
                 dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":0/");
                 availableDomains.insert(PowerCapDomain::DRAM);
             }
         }
-        if (cpu_.getAvailablePowerDomains().pp1_) {
+        if (device_->getAvailablePowerDomains().pp1_) {
             pp1Dirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":1/");
             availableDomains.insert(PowerCapDomain::PP1);
-            if (cpu_.getAvailablePowerDomains().dram_) {
+            if (device_->getAvailablePowerDomains().dram_) {
                 dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":2/");
                 availableDomains.insert(PowerCapDomain::DRAM);
             }
         } else {
-            if (cpu_.getAvailablePowerDomains().dram_ && dramDirs_.empty()) {
+            if (device_->getAvailablePowerDomains().dram_ && dramDirs_.empty()) {
                 dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":1/");
                 availableDomains.insert(PowerCapDomain::DRAM);
             }
@@ -119,7 +120,7 @@ void Eco::readAndStoreDefaultLimits() {
     if (!fileExists) {
         fs << "PKG\n" << *defaultConstrPKG;
     }
-    if (cpu_.getAvailablePowerDomains().pp0_) {
+    if (device_->getAvailablePowerDomains().pp0_) {
         defaultConstrPP0 = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(pp0Dirs_[0] + pl0dir),
                                                               readLimitFromFile(pp0Dirs_[0] + window0dir),
                                                               readLimitFromFile(pp0Dirs_[0] + isEnabledDir)));
@@ -127,7 +128,7 @@ void Eco::readAndStoreDefaultLimits() {
             fs << "PP0\n" << *defaultConstrPP0;
         }
     }
-    if (cpu_.getAvailablePowerDomains().pp1_) {
+    if (device_->getAvailablePowerDomains().pp1_) {
         defaultConstrPP1 = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(pp1Dirs_[0] + pl0dir),
                                                               readLimitFromFile(pp1Dirs_[0] + window0dir),
                                                               readLimitFromFile(pp1Dirs_[0] + isEnabledDir)));
@@ -135,7 +136,7 @@ void Eco::readAndStoreDefaultLimits() {
             fs << "PP1\n" << *defaultConstrPP1;
         }
     }
-    if (cpu_.getAvailablePowerDomains().dram_) {
+    if (device_->getAvailablePowerDomains().dram_) {
         defaultConstrDRAM = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(dramDirs_[0] + pl0dir),
                                                                readLimitFromFile(dramDirs_[0] + window0dir),
                                                                readLimitFromFile(dramDirs_[0] + isEnabledDir)));
@@ -215,7 +216,7 @@ void Eco::restoreDefaults () {
 }
 
 void Eco::setPowerCap(int cap, Domain dom) {
-    auto&& numPkgs = cpu_.getNumPackages(); // packagesDirs_.size();
+    auto&& numPkgs = device_->getNumPackages(); // packagesDirs_.size();
     auto singlePKGcap = cap / numPkgs;
     switch (dom) {
         case PowerCapDomain::PKG :
@@ -258,7 +259,7 @@ std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
     lowPowLimit_uW = lowPowLimit_uW; // TODO: don't use hack
     // TODO: this is hack, should be handled by using power budget (power cap) on each pkg, not by division here
 
-    int highPowLimit_uW = cpu_.getNumPackages() * defaultConstrPKG->longPower;//(int)(highPowW * 1000000 + 0.5); // same
+    int highPowLimit_uW = device_->getNumPackages() * defaultConstrPKG->longPower;//(int)(highPowW * 1000000 + 0.5); // same
     int step = ((highPowLimit_uW - lowPowLimit_uW)/ 100) * cfg_.percentStep_;
     for (int limit_uW = highPowLimit_uW; limit_uW > lowPowLimit_uW; limit_uW -= step) {
         powerLimitsVec.push_back(limit_uW);
@@ -619,7 +620,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         }
         else {              // parent process
             int lowPowLimit_uW = (int)(idleAvPow[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
-            int highPowLimit_uW = cpu_.getNumPackages() * defaultConstrPKG->longPower;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
+            int highPowLimit_uW = device_->getNumPackages() * defaultConstrPKG->longPower;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
             int status = 1;
             printHeader();
             waitTime = measureDuration([&, this] {
@@ -670,7 +671,7 @@ FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
 
     // TODO: modify this temporary fix printing reference value as max+1
     // pass powerManagIF as a parameter to FinalPowerAndPerfResult constructor
-    return FinalPowerAndPerfResult(cpu_.getNumPackages() * devStateGlobal_.getPkgMaxPower(), //(double)-1,
+    return FinalPowerAndPerfResult(device_->getNumPackages() * devStateGlobal_.getPkgMaxPower(), //(double)-1,
                                 devStateGlobal_.getTotalEnergy(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PP0),
