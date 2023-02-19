@@ -31,6 +31,7 @@ public:
     void resetDevice();
     double getPkgMaxPower();
     double getCurrentPower(Domain d);
+    double getPerfCounterSinceReset();
 
 private:
     std::shared_ptr<Device> device_;

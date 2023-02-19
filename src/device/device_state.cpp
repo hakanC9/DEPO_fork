@@ -21,46 +21,60 @@
 DeviceState::DeviceState(std::shared_ptr<Device> d) :
     device_(d)
 {
-    for (auto&& cpuCore : device_->pkgToFirstCoreMap_) {
+    for (auto&& cpuCore : device_->pkgToFirstCoreMap_)
+    {
         raplVec_.emplace_back(cpuCore, device_->getAvailablePowerDomains());
         std::cout << "INFO: created RAPL object for core " << cpuCore << " in DeviceState.\n";
     }
 }
 
 void DeviceState::resetDevice() {
-    for (auto&& rapl : raplVec_) {
+    for (auto&& rapl : raplVec_)
+    {
         rapl.reset();
     }
+    device_->resetPerfCounters();
 }
 
 void DeviceState::sample() {
-    for (auto&& rapl : raplVec_) {
+    for (auto&& rapl : raplVec_)
+    {
         rapl.sample();
     }
 }
 
 double DeviceState::getCurrentPower(Domain d) {
     double result = 0.0;
-    for (auto&& rapl : raplVec_) {
+    for (auto&& rapl : raplVec_)
+    {
         result += rapl.getCurrentPower()[d];
     }
     return result;
 }
 
-double DeviceState::getPkgMaxPower() {
+double DeviceState::getPerfCounterSinceReset()
+{
+    return device_->getNumInstructionsSinceReset();
+}
+
+double DeviceState::getPkgMaxPower()
+{
     return raplVec_.front().pkg_max_power() * raplVec_.size();
     //above may cause problems when vector is empty or when two different CPUs are in one device
 }
 
-double DeviceState::getTotalAveragePower(Domain d) {
+double DeviceState::getTotalAveragePower(Domain d)
+{
     double result = 0.0;
-    for (auto&& rapl : raplVec_) {
+    for (auto&& rapl : raplVec_)
+    {
         result += rapl.getAveragePower()[d];
     }
     return result;
 }
 
-double DeviceState::getTotalTime() {
+double DeviceState::getTotalTime()
+{
     std::set<double> timeSet;
     for (auto&& rapl : raplVec_) {
         timeSet.insert(rapl.total_time());
@@ -68,7 +82,8 @@ double DeviceState::getTotalTime() {
     return *timeSet.rbegin(); // set is sorted containter
 }
 
-double DeviceState::getTotalEnergy(Domain d) {
+double DeviceState::getTotalEnergy(Domain d)
+{
     double result = 0.0;
     for (auto&& rapl : raplVec_) {
         result += rapl.getTotalEnergy()[d];
@@ -76,7 +91,8 @@ double DeviceState::getTotalEnergy(Domain d) {
     return result;
 }
 
-std::vector<double> DeviceState::getTotalEnergyVec(Domain d) {
+std::vector<double> DeviceState::getTotalEnergyVec(Domain d)
+{
     std::vector<double> result;
     for (auto&& rapl : raplVec_) {
         result.push_back(rapl.getTotalEnergy()[d]);

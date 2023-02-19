@@ -22,7 +22,6 @@
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
-#include <boost/filesystem.hpp> // maybe useless here after changes
 #include "plot_builder.hpp"
 #include "helpers/log.hpp"
 
@@ -49,7 +48,6 @@ Eco::Eco(std::shared_ptr<Device> d) :
         modifyWatchdog(WatchdogStatus::DISABLED);
     }
 
-    initPcmCounters();
     smaFilters_.emplace(FilterType::SMA50, 50);
     smaFilters_.emplace(FilterType::SMA100, 100);
     smaFilters_.emplace(FilterType::SMA200, 200);
@@ -65,17 +63,6 @@ Eco::~Eco() {
     device_->restoreDefaults();
     modifyWatchdog(defaultWatchdog);
     outPowerFile.close();
-}
-
-void Eco::initPcmCounters() {
-    pcm_ = pcm::PCM::getInstance();
-    std::cerr << "\n Resetting PMU configuration" << std::endl;
-    pcm_->resetPMU();
-    pcm::PCM::ErrorCode status = pcm_->program();
-    if (status != pcm::PCM::Success) {
-        std::cerr << "Unsuccesfull CPU events programming - application can not be run properly\n Exiting...\n";
-        // TODO: exception should be thrown
-    }
 }
 
 
@@ -243,11 +230,9 @@ void Eco::localPowerSample(int usPeriod) {
 
 PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
     devStateLocal_.resetDevice();
-    pcm_->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
     localPowerSample(usPeriod);
-    pcm_->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
 
-    return PowAndPerfResult((double)getInstructionsRetired(SysBeforeState, SysAfterState)/1000000,
+    return PowAndPerfResult(devStateLocal_.getPerfCounterSinceReset(),
                             (double)usPeriod/1000000,
                             device_->getCurrentPowerCap(),
                             devStateLocal_.getTotalEnergy(Domain::PKG),
@@ -525,10 +510,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
 
 
 FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
-    pcm_->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
     singleAppRunAndPowerSample(argv);
-    pcm_->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
-
     reportResult();
 
     // TODO: modify this temporary fix printing reference value as max+1
@@ -540,8 +522,9 @@ FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
                                 devStateGlobal_.getTotalAveragePower(Domain::PP1),
                                 devStateGlobal_.getTotalAveragePower(Domain::DRAM),
                                 devStateGlobal_.getTotalTime(),
-                              (double)getInstructionsRetired(SysBeforeState, SysAfterState)/1000000,
-                              (double)getCycles(SysBeforeState, SysAfterState)/1000000);
+                                devStateGlobal_.getPerfCounterSinceReset(),
+                                0.0 // num of cycles is not needed, so might be removed in the future
+                                );
 }
 
 FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int numIterations) {

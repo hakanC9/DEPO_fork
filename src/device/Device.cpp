@@ -70,6 +70,7 @@ Device::Device() {
     detectPowerCapsAvailability();
 	prepareRaplDirsFromAvailableDomains();
 	readAndStoreDefaultLimits();
+	initPerformanceCounters();
 	std::cout << "INFO: Device constructor called!\n";
 }
 
@@ -423,4 +424,27 @@ void Device::setLongTimeWindow(int longTimeWindow) {
 RaplDefaults Device::getDefaultCaps() const
 {
 	return raplDefaultCaps_;
+}
+
+void Device::initPerformanceCounters()
+{
+    pcm_ = pcm::PCM::getInstance();
+    std::cerr << "\n Resetting PMU configuration" << std::endl;
+    pcm_->resetPMU();
+    pcm::PCM::ErrorCode status = pcm_->program();
+    if (status != pcm::PCM::Success) {
+        std::cerr << "Unsuccesfull CPU events programming - application can not be run properly\n Exiting...\n";
+        // TODO: exception should be thrown
+    }
+}
+
+void Device::resetPerfCounters()
+{
+    pcm_->getAllCounterStates(sysBeforeState_, dummySocketStates_, beforeState_);
+}
+
+double Device::getNumInstructionsSinceReset()
+{
+    pcm_->getAllCounterStates(sysAfterState_, dummySocketStates_, afterState_);
+	return (double)getInstructionsRetired(sysBeforeState_, sysAfterState_)/1000000;
 }

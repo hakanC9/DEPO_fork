@@ -21,7 +21,7 @@
 #include <memory>
 #include <set>
 #include "../helpers/eco_constants.hpp"
-
+#include <cpucounters.h>
 
 struct AvailablePowerDomains {
     AvailablePowerDomains() {}
@@ -68,6 +68,8 @@ public:
     double getCurrentPowerCap() const;
     AvailablePowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
+    void resetPerfCounters();
+    double getNumInstructionsSinceReset();
     std::vector<int> pkgToFirstCoreMap_; // TODO getter for this, preferably delete
 
 private:
@@ -76,16 +78,21 @@ private:
     void detectPowerCapsAvailability();
     void prepareRaplDirsFromAvailableDomains();
     void readAndStoreDefaultLimits();
+    void initPerformanceCounters();
     std::string mapCpuFamilyName(int& model);
     void setLongTimeWindow(int); // might be useless
 
     int totalPackages_ {0};
     int totalCores_ {0};
     int model_ {-1};
+    pcm::PCM* pcm_;
     AvailablePowerDomains devicePowerProfile_;
     RaplDirs raplDirs_;
     RaplDefaults raplDefaultCaps_;
     static constexpr double DEFAULT_LIMIT {300.0};
     double currentPowerCapPKG_ {DEFAULT_LIMIT};
     const std::string defaultLimitsFile_ {"./default_limits_dump.txt"};
+    pcm::SystemCounterState sysBeforeState_, sysAfterState_;
+    std::vector<pcm::CoreCounterState> beforeState_, afterState_;
+    std::vector<pcm::SocketCounterState> dummySocketStates_;
 };

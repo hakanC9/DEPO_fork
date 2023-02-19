@@ -22,7 +22,6 @@
 // Workaround: below two has to be included in such order to ensure no warnings
 //             about macro redefinitions. Some of the macros in Rapl.hpp are already
 //             defined in types.h included by cpucounters.h but not all of them.
-#include <cpucounters.h>
 #include "device/device_state.hpp"
 //----------------------------------------------------------------------------------
 #include "helpers/power_and_perf_result.hpp"
@@ -102,29 +101,21 @@ class Eco : public EcoApi
   private:
     std::map<FilterType, DataFilter> smaFilters_;
     FilterType activeFilter_ {FilterType::SMA100};
-    pcm::SystemCounterState SysBeforeState, SysAfterState;
-    std::vector<pcm::CoreCounterState> BeforeState, AfterState;
-    std::vector<pcm::SocketCounterState> DummySocketStates;
-    pcm::PCM* pcm_;
     DataFilter filter2order_;
     std::shared_ptr<Device> device_;
     CrossDomainQuantity idleAvPow;
     double pprevSMA_ {0.0}, prevSMA_ {0.0};
     bool optimizationTrigger_ {false};
-    // -----
-    // class DirBuilder
-    // ---- 
+
     DeviceState devStateGlobal_;
     DeviceState devStateLocal_;
     std::vector<FinalPowerAndPerfResult> oneSeriesResultVec;
 
-    // struct with data which may be dumped
     WatchdogStatus defaultWatchdog;
     // --
     std::ofstream outPowerFile;
     std::chrono::high_resolution_clock::time_point startTime_;
 
-    void initPcmCounters();
     void storeDataPointToFilters(double);
     double getFilteredPower();
     void modifyWatchdog(WatchdogStatus);
