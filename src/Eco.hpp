@@ -103,16 +103,15 @@ class Eco : public EcoApi
     FilterType activeFilter_ {FilterType::SMA100};
     DataFilter filter2order_;
     std::shared_ptr<Device> device_;
-    CrossDomainQuantity idleAvPow;
+    CrossDomainQuantity idleAvPow_;
     double pprevSMA_ {0.0}, prevSMA_ {0.0};
     bool optimizationTrigger_ {false};
 
     DeviceState devStateGlobal_;
     DeviceState devStateLocal_;
-    std::vector<FinalPowerAndPerfResult> oneSeriesResultVec;
+    std::vector<FinalPowerAndPerfResult> fullAppRunResultsContainer_;
 
     WatchdogStatus defaultWatchdog;
-    // --
     std::ofstream outPowerFile;
     std::chrono::high_resolution_clock::time_point startTime_;
 

@@ -109,7 +109,7 @@ static inline void writeLimitToFile (std::string fileName, int limit) {
 std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
     std::vector<int> powerLimitsVec;
 
-    int lowPowLimit_uW = (int)(idleAvPow[dom] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
+    int lowPowLimit_uW = (int)(idleAvPow_[dom] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
     lowPowLimit_uW = lowPowLimit_uW; // TODO: don't use hack
     // TODO: this is hack, should be handled by using power budget (power cap) on each pkg, not by division here
 
@@ -167,16 +167,16 @@ void Eco::checkIdlePowerConsumption() {
     }
     std::cout << FLUSH_AND_RETURN;
     // TODO: assign structure object, not each element separately
-    idleAvPow[Domain::PKG] = devStateGlobal_.getTotalAveragePower(Domain::PKG);
-    idleAvPow[Domain::PP0] = devStateGlobal_.getTotalAveragePower(Domain::PP0);
-    idleAvPow[Domain::PP1] = devStateGlobal_.getTotalAveragePower(Domain::PP1);
-    idleAvPow[Domain::DRAM] = devStateGlobal_.getTotalAveragePower(Domain::DRAM);
+    idleAvPow_[Domain::PKG] = devStateGlobal_.getTotalAveragePower(Domain::PKG);
+    idleAvPow_[Domain::PP0] = devStateGlobal_.getTotalAveragePower(Domain::PP0);
+    idleAvPow_[Domain::PP1] = devStateGlobal_.getTotalAveragePower(Domain::PP1);
+    idleAvPow_[Domain::DRAM] = devStateGlobal_.getTotalAveragePower(Domain::DRAM);
     std::cout << std::fixed << std::setprecision(3)
               << "\nIdle average power consumption:\n"
-              << "\t PKG: " << idleAvPow[Domain::PKG] << " W\n"
-              << "\t PP0: " << idleAvPow[Domain::PP0] << " W\n"
-              << "\t PP1: " << idleAvPow[Domain::PP1] << " W\n"
-              << "\tDRAM: " << idleAvPow[Domain::DRAM] << " W\n";
+              << "\t PKG: " << idleAvPow_[Domain::PKG] << " W\n"
+              << "\t PP0: " << idleAvPow_[Domain::PP0] << " W\n"
+              << "\t PP1: " << idleAvPow_[Domain::PP1] << " W\n"
+              << "\tDRAM: " << idleAvPow_[Domain::DRAM] << " W\n";
 }
 
 void Eco::singleAppRunAndPowerSample(char* const* argv) {
@@ -471,7 +471,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
             mainAppProcess(argv, fd);
         }
         else {              // parent process
-            int lowPowLimit_uW = (int)(idleAvPow[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
+            int lowPowLimit_uW = (int)(idleAvPow_[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
             int highPowLimit_uW = device_->getNumPackages() * device_->getDefaultCaps().defaultConstrPKG_->longPower;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
             int status = 1;
             printHeader();
@@ -539,8 +539,8 @@ FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int
 }
 
 void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
-    if (oneSeriesResultVec.size() == 0) {
-        oneSeriesResultVec.emplace_back(devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+    if (fullAppRunResultsContainer_.size() == 0) {
+        fullAppRunResultsContainer_.emplace_back(devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
                                         ref.energy,
                                         ref.pkgPower,
                                         ref.pp0power,
@@ -557,7 +557,7 @@ void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
 
 void Eco::referenceRunWithoutCaps(char* const* argv) {
     auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
-    oneSeriesResultVec.emplace_back(device_->getDefaultCaps().defaultConstrPKG_->longPower / 1000000, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+    fullAppRunResultsContainer_.emplace_back(device_->getDefaultCaps().defaultConstrPKG_->longPower / 1000000, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
                                     avResult.energy,
                                     avResult.pkgPower,
                                     avResult.pp0power,
@@ -570,10 +570,18 @@ void Eco::referenceRunWithoutCaps(char* const* argv) {
 }
 
 void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain dom) {
+    // This is legacy method which requires prior referenceRunWithoutCaps() method call.
+    // This method wes used when there was a need for static
+    // evaluation of different power caps for a given power domain.
+    // In recent Intel based CPUs there is no PP0 and PP1 domains so that
+    // it is really only a matter if one want to limit PKG domain or DRAM.
+    // The method will be probably removed soon.
+    // For now the tool supports only PKG domain and static energy profiling is covered
+    // end-to-end by staticEnergyProfiler() method of ECO class.
     if (device_->isDomainAvailable(dom))
     {
         stream << "#[INFO] Running tests for domain " << dom << ".\n";
-        const auto ref = oneSeriesResultVec.front(); //TODO: remove the dependency on reference run
+        const auto ref = fullAppRunResultsContainer_.front(); //TODO: remove the dependency on reference run
         stream << std::fixed << std::setprecision(3) << ref << "\n";
         auto powerLimitsVec = generateVecOfPowerCaps(dom);
         auto loopsToDo = powerLimitsVec.size();
@@ -588,7 +596,7 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
             auto mPlusDynamic = (1.0/k) * (ref.getInstrPerSec() / avResult.getInstrPerSec()) *
                                 ((k-1.0) * (avResult.getEnergyPerInstr() / ref.getEnergyPerInstr()) + 1.0);
             auto&& timeDelta = avResult.time_.totalTime_ - ref.time_.totalTime_;
-            oneSeriesResultVec.emplace_back((double)currentLimit / 1000000,
+            fullAppRunResultsContainer_.emplace_back((double)currentLimit / 1000000,
                                             avResult.energy,
                                             avResult.pkgPower,
                                             avResult.pp0power,
@@ -602,25 +610,25 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
                                             100 * (avResult.energy - ref.energy) / ref.energy,
                                             100 * (timeDelta) / ref.time_.totalTime_,
                                             mPlus);
-            stream << oneSeriesResultVec.back() << "\t" << mPlusDynamic << "\n";
-            if (oneSeriesResultVec.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
+            stream << fullAppRunResultsContainer_.back() << "\t" << mPlusDynamic << "\n";
+            if (fullAppRunResultsContainer_.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
                 break;
             }
         }
         device_->restoreDefaults();
         stream << "# PowerCap for: min(E): "
-               << std::min_element(oneSeriesResultVec.begin(),
-                                   oneSeriesResultVec.end(),
+               << std::min_element(fullAppRunResultsContainer_.begin(),
+                                   fullAppRunResultsContainer_.end(),
                                    CompareFinalResultsForMinE())->powercap
                << " W, "
                << "min(Et): "
-               << std::min_element(oneSeriesResultVec.begin(),
-                                   oneSeriesResultVec.end(),
+               << std::min_element(fullAppRunResultsContainer_.begin(),
+                                   fullAppRunResultsContainer_.end(),
                                    CompareFinalResultsForMinEt())->powercap
                << " W, "
                << "min(M+): "
-               << std::min_element(oneSeriesResultVec.begin(),
-                                   oneSeriesResultVec.end(),
+               << std::min_element(fullAppRunResultsContainer_.begin(),
+                                   fullAppRunResultsContainer_.end(),
                                    CompareFinalResultsForMplus())->powercap
                << " W.\n";
     } else {
