@@ -61,8 +61,6 @@ class EcoApi
     std::string getResultFileName() const { return outResultFileName_; }
     std::string getPowerLogFileName() const { return outPowerFileName_; }
     EcoApi() = default;
-    int readLimitFromFile (std::string);
-    void writeLimitToFile (std::string , int);
     virtual ~EcoApi() = default;
   protected:
     ParamsConfig cfg_; // stores defaults values of params or reads it from params.conf
@@ -73,7 +71,6 @@ class EcoApi
 class Eco : public EcoApi
 {
   public:
-    void setPowerCap(int, Domain = PowerCapDomain::PKG);
     void referenceRunWithoutCaps(char* const*);
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
     void idleSample(int idleTimeS) override;
@@ -108,35 +105,20 @@ class Eco : public EcoApi
     pcm::SystemCounterState SysBeforeState, SysAfterState;
     std::vector<pcm::CoreCounterState> BeforeState, AfterState;
     std::vector<pcm::SocketCounterState> DummySocketStates;
-    pcm::PCM* m;
+    pcm::PCM* pcm_;
     DataFilter filter2order_;
     std::shared_ptr<Device> device_;
     CrossDomainQuantity idleAvPow;
-    std::set<PowerCapDomain> availableDomains;
     double pprevSMA_ {0.0}, prevSMA_ {0.0};
     bool optimizationTrigger_ {false};
     // -----
     // class DirBuilder
-    const std::string pl0dir {"constraint_0_power_limit_uw"};
-    const std::string pl1dir {"constraint_1_power_limit_uw"};
-    const std::string window0dir {"constraint_0_time_window_us"};
-    const std::string window1dir {"constraint_1_time_window_us"};
-    const std::string isEnabledDir {"enabled"};
-    std::string raplBaseDirectory {"/sys/class/powercap/intel-rapl:"};
-    std::vector<std::string> packagesDirs_;
-    std::vector<std::string> pp0Dirs_;
-    std::vector<std::string> pp1Dirs_;
-    std::vector<std::string> dramDirs_;
     // ---- 
     DeviceState devStateGlobal_;
     DeviceState devStateLocal_;
     std::vector<FinalPowerAndPerfResult> oneSeriesResultVec;
-    std::shared_ptr<Constraints> defaultConstrPKG;
-    std::shared_ptr<SubdomainInfo> defaultConstrPP0;
-    std::shared_ptr<SubdomainInfo> defaultConstrPP1;
-    std::shared_ptr<SubdomainInfo> defaultConstrDRAM;
+
     // struct with data which may be dumped
-    const std::string defaultLimitsFile {"./default_limits_dump.txt"};
     WatchdogStatus defaultWatchdog;
     // --
     std::ofstream outPowerFile;
@@ -148,7 +130,6 @@ class Eco : public EcoApi
     void modifyWatchdog(WatchdogStatus);
     WatchdogStatus readWatchdog();
     void raplSample();
-    void restoreDefaults();
     std::string generateUniqueResultDir();
     std::vector<int> generateVecOfPowerCaps(Domain = PowerCapDomain::PKG);
     void singleAppRunAndPowerSample(char* const*);
@@ -156,10 +137,8 @@ class Eco : public EcoApi
     void checkIdlePowerConsumption();
     void localPowerSample(int);
     PowAndPerfResult checkPowerAndPerformance(int);
-    void readAndStoreDefaultLimits();
     PowAndPerfResult setCapAndMeasure(int, int);
     void justSample(int timeS);
-    void setLongTimeWindow(int);
     void reportResult(double = 0.0, double = 0.0);
     void waitPhase(int&, int);
     int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&);
@@ -169,8 +148,5 @@ class Eco : public EcoApi
     int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric);
     int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric);
 
-    // TODO: temporary solution
-    double currentPowerCapPKG_ {DEFAULT_LIMIT}; // shall be moved to power management interface along with setPoweCap logic
     static constexpr int FIRST_RUN_MULTIPLIER {3};
-    static constexpr double DEFAULT_LIMIT {300.0};
 };
