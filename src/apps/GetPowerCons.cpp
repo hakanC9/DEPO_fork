@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
 	std::vector<pcm::CoreCounterState> BeforeState, AfterState;
 	std::vector<pcm::SocketCounterState> DummySocketStates;
 
-    DeviceState ds;
+    DeviceState ds(std::make_shared<Device>());
 	int ms_pause = 100;       // sample every 100ms
 	std::string outFileName = "./rapl.csv";
 	std::ofstream outfile (outFileName, std::ios::out | std::ios::trunc);

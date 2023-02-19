@@ -73,7 +73,8 @@ int main (int argc, char *argv[]) {
 	watchdog << "0";
 	watchdog.close();
 
-    Eco eco;
+
+    Eco eco(std::make_shared<Device>());
     std::ofstream outResultFile (eco.getResultFileName(), std::ios::out | std::ios::trunc);
 
     BothStream bout(outResultFile);

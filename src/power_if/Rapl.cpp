@@ -112,7 +112,8 @@ void Rapl::someCommonCode() {
 }
 
 Rapl::Rapl(int core, AvailablePowerDomains avDom) :
-    cpuCore_(core), availableDomains_(avDom) {
+    cpuCore_(core), availableDomains_(avDom)
+{
     someCommonCode();
     reset();
 }

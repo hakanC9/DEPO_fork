@@ -21,17 +21,57 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include <boost/filesystem.hpp>
+
 
 #define MAX_CPUS		1024
 
+static inline int readLimitFromFile (std::string fileName) {
+    std::ifstream limitFile (fileName.c_str());
+    std::string line;
+    int limit = -1;
+    if (limitFile.is_open()){
+        while ( getline (limitFile, line) ){
+            limit = atoi(line.c_str());
+        }
+        limitFile.close();
+    } else {
+        std::cerr << "cannot read the limit file: " << fileName << "\n"
+                  << "file not open\n";
+    }
+    return limit;
+}
+
+static inline void writeLimitToFile (std::string fileName, int limit) {
+    std::ofstream outfile (fileName.c_str(), std::ios::out | std::ios::trunc);
+    if (outfile.is_open()){
+        outfile << limit;
+    } else {
+        std::cerr << "cannot write the limit to file " << fileName << "\n"
+                  << "file not open\n";
+    }
+    outfile.close();
+}
+
+
+
 AvailablePowerDomains::AvailablePowerDomains (bool p0, bool p1, bool d, bool ps, bool du) :
-    pp0_(p0), pp1_(p1), dram_(d), psys_(ps), fixedDramUnits_(du) {
+    pp0_(p0), pp1_(p1), dram_(d), psys_(ps), fixedDramUnits_(du)
+{
+	availableDomainsSet_.insert(PowerCapDomain::PKG);
+	if (pp0_) availableDomainsSet_.insert(PowerCapDomain::PP0);
+	if (pp1_) availableDomainsSet_.insert(PowerCapDomain::PP1);
+	if (dram_) availableDomainsSet_.insert(PowerCapDomain::DRAM);
 }
 
 Device::Device() {
     detectCPU();
     detectPackages();
     detectPowerCapsAvailability();
+	prepareRaplDirsFromAvailableDomains();
+	readAndStoreDefaultLimits();
+	initPerformanceCounters();
+	std::cout << "INFO: Device constructor called!\n";
 }
 
 int Device::getNumPackages() {
@@ -98,7 +138,7 @@ void Device::detectCPU() {
 		outStream.close();
 	}
 	if (family == 6) {
-		std::cout << "Detected suported CPU\nModel: " << mapCpuFamilyName(model_) << "\n";
+		std::cout << "Detected suported CPU family\nModel: " << mapCpuFamilyName(model_) << "\n";
 	}
 }
 
@@ -157,6 +197,13 @@ std::string Device::mapCpuFamilyName(int& model){
 			return std::string("Skylake");
 		case CPU_SKYLAKE_X:
 			return std::string("Skylake-X");
+		case CPU_ICELAKE_U:
+		case CPU_ICELAKE_Y:
+			return std::string("Icelake");
+		case CPU_ICELAKE_DE:
+			return std::string("Icelake-DE");
+		case CPU_ICELAKE_SP:
+			return std::string("Icelake-SP");
 		case CPU_KABYLAKE:
 		case CPU_KABYLAKE_MOBILE:
 			return std::string("Kaby Lake");
@@ -188,6 +235,7 @@ void Device::detectPowerCapsAvailability() {
 
 		case CPU_HASWELL_EP:
 		case CPU_BROADWELL_EP: // according to real system (PC Xeon E5) there is no PP0
+		case CPU_ICELAKE_SP: // verified with real system
 		case CPU_SKYLAKE_X: // TODO: To be checked on Skylake X if possible.
 			devicePowerProfile_ = AvailablePowerDomains(false, false, true, false, true);
 			break;
@@ -221,4 +269,182 @@ void Device::detectPowerCapsAvailability() {
 			devicePowerProfile_ = AvailablePowerDomains(true, false, true, true, false);
 			break;
 	}
+}
+
+void Device::prepareRaplDirsFromAvailableDomains()
+{
+    // TODO: rework below loop and verify correctness for KNL and KNM
+    for (unsigned i = 0; i < this->getNumPackages(); i++) {
+        raplDirs_.packagesDirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + "/");
+        if (devicePowerProfile_.pp0_) {
+            raplDirs_.pp0Dirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + ":0/");
+        } else {
+            if (devicePowerProfile_.dram_) {
+                raplDirs_.dramDirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + ":0/");
+            }
+        }
+        if (devicePowerProfile_.pp1_) {
+            raplDirs_.pp1Dirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + ":1/");
+            if (devicePowerProfile_.dram_) {
+                raplDirs_.dramDirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + ":2/");
+            }
+        } else {
+            if (devicePowerProfile_.dram_ && raplDirs_.dramDirs_.empty()) {
+                raplDirs_.dramDirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + ":1/");
+            }
+        }
+    }
+}
+
+bool Device::isDomainAvailable(Domain dom)
+{
+	return devicePowerProfile_.availableDomainsSet_.find(dom) != devicePowerProfile_.availableDomainsSet_.end();
+}
+
+void Device::readAndStoreDefaultLimits() {
+    auto fileExists = boost::filesystem::exists(defaultLimitsFile_);
+    std::ofstream fs;
+    if(!fileExists) {
+        fs.open(defaultLimitsFile_, std::ios::out | std::ios::trunc);
+    }
+    raplDefaultCaps_.defaultConstrPKG_ = ConstraintsSP (new Constraints(
+		                                              readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.pl0dir_),
+                                                      readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.pl1dir_),
+                                                      readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.window0dir_),
+                                                      readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.window1dir_)));
+    if (!fileExists) {
+        fs << "PKG\n" << *raplDefaultCaps_.defaultConstrPKG_;
+    }
+    if (devicePowerProfile_.pp0_) {
+        raplDefaultCaps_.defaultConstrPP0_ = SubdomainInfoSP (new SubdomainInfo(
+			                                                  readLimitFromFile(raplDirs_.pp0Dirs_[0] + raplDirs_.pl0dir_),
+                                                              readLimitFromFile(raplDirs_.pp0Dirs_[0] + raplDirs_.window0dir_),
+                                                              readLimitFromFile(raplDirs_.pp0Dirs_[0] + raplDirs_.isEnabledDir_)));
+        if (!fileExists) {
+            fs << "PP0\n" << *raplDefaultCaps_.defaultConstrPP0_;
+        }
+    }
+    if (devicePowerProfile_.pp1_) {
+        raplDefaultCaps_.defaultConstrPP1_ = SubdomainInfoSP (new SubdomainInfo(
+			                                                  readLimitFromFile(raplDirs_.pp1Dirs_[0] + raplDirs_.pl0dir_),
+                                                              readLimitFromFile(raplDirs_.pp1Dirs_[0] + raplDirs_.window0dir_),
+                                                              readLimitFromFile(raplDirs_.pp1Dirs_[0] + raplDirs_.isEnabledDir_)));
+        if (!fileExists) {
+            fs << "PP1\n" << *raplDefaultCaps_.defaultConstrPP1_;
+        }
+    }
+    if (devicePowerProfile_.dram_) {
+        raplDefaultCaps_.defaultConstrDRAM_ = SubdomainInfoSP (new SubdomainInfo(
+			                                                   readLimitFromFile(raplDirs_.dramDirs_[0] + raplDirs_.pl0dir_),
+                                                               readLimitFromFile(raplDirs_.dramDirs_[0] + raplDirs_.window0dir_),
+                                                               readLimitFromFile(raplDirs_.dramDirs_[0] + raplDirs_.isEnabledDir_)));
+        if (!fileExists) {
+            fs << "DRAM\n" << *raplDefaultCaps_.defaultConstrDRAM_;
+        }
+    }
+    if (fs.is_open()) {
+        fs.close();
+    }
+}
+
+void Device::restoreDefaults () {
+    currentPowerCapPKG_ = DEFAULT_LIMIT;
+    //assume that both PKGs has the same limits
+    for (auto& currentPkgDir : raplDirs_.packagesDirs_) {
+        writeLimitToFile (currentPkgDir + raplDirs_.pl0dir_, raplDefaultCaps_.defaultConstrPKG_->longPower);
+        writeLimitToFile (currentPkgDir + raplDirs_.pl1dir_, raplDefaultCaps_.defaultConstrPKG_->shortPower);
+        writeLimitToFile (currentPkgDir + raplDirs_.window0dir_, raplDefaultCaps_.defaultConstrPKG_->longWindow);
+        writeLimitToFile (currentPkgDir + raplDirs_.window1dir_, raplDefaultCaps_.defaultConstrPKG_->shortWindow);
+    }
+    for (auto& currentPP0dir : raplDirs_.pp0Dirs_) {
+        writeLimitToFile (currentPP0dir + raplDirs_.pl0dir_, raplDefaultCaps_.defaultConstrPP0_->powerLimit);
+        writeLimitToFile (currentPP0dir + raplDirs_.window0dir_, raplDefaultCaps_.defaultConstrPP0_->timeWindow);
+        writeLimitToFile (currentPP0dir + raplDirs_.isEnabledDir_, raplDefaultCaps_.defaultConstrPP0_->isEnabled);
+    }
+    for (auto& currentPP1dir : raplDirs_.pp1Dirs_) {
+        writeLimitToFile (currentPP1dir + raplDirs_.pl0dir_, raplDefaultCaps_.defaultConstrPP1_->powerLimit);
+        writeLimitToFile (currentPP1dir + raplDirs_.window0dir_, raplDefaultCaps_.defaultConstrPP1_->timeWindow);
+        writeLimitToFile (currentPP1dir + raplDirs_.isEnabledDir_, raplDefaultCaps_.defaultConstrPP1_->isEnabled);
+    }
+    for (auto& currentDRAMdir : raplDirs_.dramDirs_) {
+        writeLimitToFile (currentDRAMdir + raplDirs_.pl0dir_, raplDefaultCaps_.defaultConstrDRAM_->powerLimit);
+        writeLimitToFile (currentDRAMdir + raplDirs_.window0dir_, raplDefaultCaps_.defaultConstrDRAM_->timeWindow);
+        writeLimitToFile (currentDRAMdir + raplDirs_.isEnabledDir_, raplDefaultCaps_.defaultConstrDRAM_->isEnabled);
+    }
+}
+
+double Device::getCurrentPowerCap() const
+{
+	return currentPowerCapPKG_;
+}
+
+void Device::setPowerCap(int cap, Domain dom) {
+    auto&& numPkgs = this->getNumPackages(); // packagesDirs_.size();
+    auto singlePKGcap = cap / numPkgs;
+    switch (dom) {
+        case PowerCapDomain::PKG :
+            setLongTimeWindow(raplDefaultCaps_.defaultConstrPKG_->longWindow/10); // set to 100ms
+            for (auto& curentPkgDir : raplDirs_.packagesDirs_) {
+                writeLimitToFile(curentPkgDir + raplDirs_.pl0dir_, singlePKGcap);
+                //TODO: rework below temporary solution
+                //      move current cap to power interface class
+                //      along with this whole method setPowerCap
+                currentPowerCapPKG_ = (double)cap / 1000000;
+            }
+            break;
+        case PowerCapDomain::PP0 :
+            for (auto& curentPP0dir : raplDirs_.pp0Dirs_) {
+                writeLimitToFile(curentPP0dir + raplDirs_.pl0dir_, cap);
+                writeLimitToFile(curentPP0dir + raplDirs_.isEnabledDir_, 1);
+            }
+            break;
+        case PowerCapDomain::PP1 :
+            for (auto& curentPP1dir : raplDirs_.pp1Dirs_) {
+                writeLimitToFile(curentPP1dir + raplDirs_.pl0dir_, cap);
+                writeLimitToFile(curentPP1dir + raplDirs_.isEnabledDir_, 1);
+            }
+            break;
+        case PowerCapDomain::DRAM :
+            for (auto& curentDRAMdir : raplDirs_.dramDirs_) {
+                writeLimitToFile(curentDRAMdir + raplDirs_.pl0dir_, cap);
+                writeLimitToFile(curentDRAMdir + raplDirs_.isEnabledDir_, 1);
+            }
+            break;
+        default :
+            break;
+    }
+}
+
+void Device::setLongTimeWindow(int longTimeWindow) {
+    for (auto& curentPkgDir : raplDirs_.packagesDirs_) {
+        writeLimitToFile (curentPkgDir + raplDirs_.window0dir_, longTimeWindow);
+    }
+}
+
+RaplDefaults Device::getDefaultCaps() const
+{
+	return raplDefaultCaps_;
+}
+
+void Device::initPerformanceCounters()
+{
+    pcm_ = pcm::PCM::getInstance();
+    std::cerr << "\n Resetting PMU configuration" << std::endl;
+    pcm_->resetPMU();
+    pcm::PCM::ErrorCode status = pcm_->program();
+    if (status != pcm::PCM::Success) {
+        std::cerr << "Unsuccesfull CPU events programming - application can not be run properly\n Exiting...\n";
+        // TODO: exception should be thrown
+    }
+}
+
+void Device::resetPerfCounters()
+{
+    pcm_->getAllCounterStates(sysBeforeState_, dummySocketStates_, beforeState_);
+}
+
+double Device::getNumInstructionsSinceReset()
+{
+    pcm_->getAllCounterStates(sysAfterState_, dummySocketStates_, afterState_);
+	return (double)getInstructionsRetired(sysBeforeState_, sysAfterState_)/1000000;
 }

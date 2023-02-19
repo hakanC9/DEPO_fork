@@ -22,62 +22,32 @@
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
-#include <boost/filesystem.hpp>
 #include "plot_builder.hpp"
 #include "helpers/log.hpp"
 
+static constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
-constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
-
-Eco::Eco() : filter2order_(100)
+Eco::Eco(std::shared_ptr<Device> d) :
+    filter2order_(100), device_(d), devStateGlobal_(d), devStateLocal_(d)
 {
-    // TODO: rework below loop and verify correctness for KNL and KNM
-    // include in DirBulder
-    for (unsigned i = 0; i < cpu_.getNumPackages(); i++) {
-        packagesDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + "/");
-        if (cpu_.getAvailablePowerDomains().pp0_) {
-            pp0Dirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":0/");
-            availableDomains.insert(PowerCapDomain::PP0);
-        } else {
-            if (cpu_.getAvailablePowerDomains().dram_) {
-                dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":0/");
-                availableDomains.insert(PowerCapDomain::DRAM);
-            }
-        }
-        if (cpu_.getAvailablePowerDomains().pp1_) {
-            pp1Dirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":1/");
-            availableDomains.insert(PowerCapDomain::PP1);
-            if (cpu_.getAvailablePowerDomains().dram_) {
-                dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":2/");
-                availableDomains.insert(PowerCapDomain::DRAM);
-            }
-        } else {
-            if (cpu_.getAvailablePowerDomains().dram_ && dramDirs_.empty()) {
-                dramDirs_.emplace_back(raplBaseDirectory + std::to_string(i) + ":1/");
-                availableDomains.insert(PowerCapDomain::DRAM);
-            }
-        }
-    }
 
     startTime_ = std::chrono::system_clock::now();
-    availableDomains.insert(PowerCapDomain::PKG); // dirty hack assuming, that PKG domain is always available
-
     // include in DirBulder
     auto dir = generateUniqueResultDir();
     outResultFileName_ = dir + "/result.csv";
-    if (cfg_.isPowerLogOn_) {
+    if (cfg_.isPowerLogOn_)
+    {
         outPowerFileName_ = dir + "/power_log.csv";
         outPowerFile.open(outPowerFileName_, std::ios::out | std::ios::trunc);
         // below should not be hardcoded but depending on type of series of data
         outPowerFile << "#time[ms]\tP_cap[W]\tPKG[W]\tSMA50\tSMA100\tSMA200\tPP0[W]\tPP1[W]\tDRAM[W]\n";
     }
-    readAndStoreDefaultLimits();
     defaultWatchdog = readWatchdog();
-    if (defaultWatchdog == WatchdogStatus::ENABLED) {
+    if (defaultWatchdog == WatchdogStatus::ENABLED)
+    {
         modifyWatchdog(WatchdogStatus::DISABLED);
     }
 
-    initPcmCounters();
     smaFilters_.emplace(FilterType::SMA50, 50);
     smaFilters_.emplace(FilterType::SMA100, 100);
     smaFilters_.emplace(FilterType::SMA200, 200);
@@ -90,64 +60,11 @@ Eco::Eco() : filter2order_(100)
 }
 
 Eco::~Eco() {
-    restoreDefaults();
+    device_->restoreDefaults();
     modifyWatchdog(defaultWatchdog);
     outPowerFile.close();
-    defaultConstrPKG = nullptr;
 }
 
-void Eco::initPcmCounters() {
-    m = pcm::PCM::getInstance();
-    std::cerr << "\n Resetting PMU configuration" << std::endl;
-    m->resetPMU();
-    pcm::PCM::ErrorCode status = m->program();
-    if (status != pcm::PCM::Success) {
-        std::cerr << "Unsuccesfull CPU events programming - application can not be run properly\n Exiting...\n";
-        // TODO: exception should be thrown
-    }
-}
-
-void Eco::readAndStoreDefaultLimits() {
-    auto fileExists = boost::filesystem::exists(defaultLimitsFile);
-    std::ofstream fs;
-    if(!fileExists) {
-        fs.open(defaultLimitsFile, std::ios::out | std::ios::trunc);
-    }
-    defaultConstrPKG = ConstraintsSP (new Constraints(readLimitFromFile(packagesDirs_[0] + pl0dir),
-                                                      readLimitFromFile(packagesDirs_[0] + pl1dir),
-                                                      readLimitFromFile(packagesDirs_[0] + window0dir),
-                                                      readLimitFromFile(packagesDirs_[0] + window1dir)));
-    if (!fileExists) {
-        fs << "PKG\n" << *defaultConstrPKG;
-    }
-    if (cpu_.getAvailablePowerDomains().pp0_) {
-        defaultConstrPP0 = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(pp0Dirs_[0] + pl0dir),
-                                                              readLimitFromFile(pp0Dirs_[0] + window0dir),
-                                                              readLimitFromFile(pp0Dirs_[0] + isEnabledDir)));
-        if (!fileExists) {
-            fs << "PP0\n" << *defaultConstrPP0;
-        }
-    }
-    if (cpu_.getAvailablePowerDomains().pp1_) {
-        defaultConstrPP1 = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(pp1Dirs_[0] + pl0dir),
-                                                              readLimitFromFile(pp1Dirs_[0] + window0dir),
-                                                              readLimitFromFile(pp1Dirs_[0] + isEnabledDir)));
-        if (!fileExists) {
-            fs << "PP1\n" << *defaultConstrPP1;
-        }
-    }
-    if (cpu_.getAvailablePowerDomains().dram_) {
-        defaultConstrDRAM = SubdomainInfoSP (new SubdomainInfo(readLimitFromFile(dramDirs_[0] + pl0dir),
-                                                               readLimitFromFile(dramDirs_[0] + window0dir),
-                                                               readLimitFromFile(dramDirs_[0] + isEnabledDir)));
-        if (!fileExists) {
-            fs << "DRAM\n" << *defaultConstrDRAM;
-        }
-    }
-    if (fs.is_open()) {
-        fs.close();
-    }
-}
 
 std::string Eco::generateUniqueResultDir() {
     std::stringstream ss;
@@ -162,7 +79,7 @@ std::string Eco::generateUniqueResultDir() {
     return dir;
 }
 
-int EcoApi::readLimitFromFile (std::string fileName) {
+static inline int readLimitFromFile (std::string fileName) {
     std::ifstream limitFile (fileName.c_str());
     std::string line;
     int limit = -1;
@@ -178,7 +95,7 @@ int EcoApi::readLimitFromFile (std::string fileName) {
     return limit;
 }
 
-void EcoApi::writeLimitToFile (std::string fileName, int limit) {
+static inline void writeLimitToFile (std::string fileName, int limit) {
     std::ofstream outfile (fileName.c_str(), std::ios::out | std::ios::trunc);
     if (outfile.is_open()){
         outfile << limit;
@@ -189,77 +106,14 @@ void EcoApi::writeLimitToFile (std::string fileName, int limit) {
     outfile.close();
 }
 
-void Eco::restoreDefaults () {
-    currentPowerCapPKG_ = DEFAULT_LIMIT;
-    //assume that both PKGs has the same limits
-    for (auto& currentPkgDir : packagesDirs_) {
-        writeLimitToFile (currentPkgDir + pl0dir, defaultConstrPKG->longPower);
-        writeLimitToFile (currentPkgDir + pl1dir, defaultConstrPKG->shortPower);
-        writeLimitToFile (currentPkgDir + window0dir, defaultConstrPKG->longWindow);
-        writeLimitToFile (currentPkgDir + window1dir, defaultConstrPKG->shortWindow);
-    }
-    for (auto& currentPP0dir : pp0Dirs_) {
-        writeLimitToFile (currentPP0dir + pl0dir, defaultConstrPP0->powerLimit);
-        writeLimitToFile (currentPP0dir + window0dir, defaultConstrPP0->timeWindow);
-        writeLimitToFile (currentPP0dir + isEnabledDir, defaultConstrPP0->isEnabled);
-    }
-    for (auto& currentPP1dir : pp1Dirs_) {
-        writeLimitToFile (currentPP1dir + pl0dir, defaultConstrPP1->powerLimit);
-        writeLimitToFile (currentPP1dir + window0dir, defaultConstrPP1->timeWindow);
-        writeLimitToFile (currentPP1dir + isEnabledDir, defaultConstrPP1->isEnabled);
-    }
-    for (auto& currentDRAMdir : dramDirs_) {
-        writeLimitToFile (currentDRAMdir + pl0dir, defaultConstrDRAM->powerLimit);
-        writeLimitToFile (currentDRAMdir + window0dir, defaultConstrDRAM->timeWindow);
-        writeLimitToFile (currentDRAMdir + isEnabledDir, defaultConstrDRAM->isEnabled);
-    }
-}
-
-void Eco::setPowerCap(int cap, Domain dom) {
-    auto&& numPkgs = cpu_.getNumPackages(); // packagesDirs_.size();
-    auto singlePKGcap = cap / numPkgs;
-    switch (dom) {
-        case PowerCapDomain::PKG :
-            setLongTimeWindow(defaultConstrPKG->longWindow/10); // set to 100ms
-            for (auto& curentPkgDir : packagesDirs_) {
-                writeLimitToFile(curentPkgDir + pl0dir, singlePKGcap);
-                //TODO: rework below temporary solution
-                //      move current cap to power interface class
-                //      along with this whole method setPowerCap
-                currentPowerCapPKG_ = (double)cap / 1000000;
-            }
-            break;
-        case PowerCapDomain::PP0 :
-            for (auto& curentPP0dir : pp0Dirs_) {
-                writeLimitToFile(curentPP0dir + pl0dir, cap);
-                writeLimitToFile(curentPP0dir + isEnabledDir, 1);
-            }
-            break;
-        case PowerCapDomain::PP1 :
-            for (auto& curentPP1dir : pp1Dirs_) {
-                writeLimitToFile(curentPP1dir + pl0dir, cap);
-                writeLimitToFile(curentPP1dir + isEnabledDir, 1);
-            }
-            break;
-        case PowerCapDomain::DRAM :
-            for (auto& curentDRAMdir : dramDirs_) {
-                writeLimitToFile(curentDRAMdir + pl0dir, cap);
-                writeLimitToFile(curentDRAMdir + isEnabledDir, 1);
-            }
-            break;
-        default :
-            break;
-    }
-}
-
 std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
     std::vector<int> powerLimitsVec;
 
-    int lowPowLimit_uW = (int)(idleAvPow[dom] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
+    int lowPowLimit_uW = (int)(idleAvPow_[dom] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
     lowPowLimit_uW = lowPowLimit_uW; // TODO: don't use hack
     // TODO: this is hack, should be handled by using power budget (power cap) on each pkg, not by division here
 
-    int highPowLimit_uW = cpu_.getNumPackages() * defaultConstrPKG->longPower;//(int)(highPowW * 1000000 + 0.5); // same
+    int highPowLimit_uW = device_->getNumPackages() * device_->getDefaultCaps().defaultConstrPKG_->longPower;//(int)(highPowW * 1000000 + 0.5); // same
     int step = ((highPowLimit_uW - lowPowLimit_uW)/ 100) * cfg_.percentStep_;
     for (int limit_uW = highPowLimit_uW; limit_uW > lowPowLimit_uW; limit_uW -= step) {
         powerLimitsVec.push_back(limit_uW);
@@ -287,9 +141,9 @@ void Eco::raplSample() {
     if (outPowerFile.is_open()) {
         outPowerFile << std::fixed << std::setprecision(4)
                      << std::chrono::duration_cast<MS>(
-                         std::chrono::high_resolution_clock::now() - startTime_).count()
-                    //  << std::chrono::system_clock::to_time_t(std::chrono::high_resolution_clock::now())
-                     << "\t" << currentPowerCapPKG_ << "\t"
+                        std::chrono::high_resolution_clock::now() - startTime_).count()
+                    //   << std::chrono::system_clock::to_time_t(std::chrono::high_resolution_clock::now())
+                     << "\t" << device_->getCurrentPowerCap() << "\t"
                      << currPower << "\t"
                      << currSMA << "\t"
                      << filter2order_.getSMA() << "\t"
@@ -313,16 +167,16 @@ void Eco::checkIdlePowerConsumption() {
     }
     std::cout << FLUSH_AND_RETURN;
     // TODO: assign structure object, not each element separately
-    idleAvPow[Domain::PKG] = devStateGlobal_.getTotalAveragePower(Domain::PKG);
-    idleAvPow[Domain::PP0] = devStateGlobal_.getTotalAveragePower(Domain::PP0);
-    idleAvPow[Domain::PP1] = devStateGlobal_.getTotalAveragePower(Domain::PP1);
-    idleAvPow[Domain::DRAM] = devStateGlobal_.getTotalAveragePower(Domain::DRAM);
+    idleAvPow_[Domain::PKG] = devStateGlobal_.getTotalAveragePower(Domain::PKG);
+    idleAvPow_[Domain::PP0] = devStateGlobal_.getTotalAveragePower(Domain::PP0);
+    idleAvPow_[Domain::PP1] = devStateGlobal_.getTotalAveragePower(Domain::PP1);
+    idleAvPow_[Domain::DRAM] = devStateGlobal_.getTotalAveragePower(Domain::DRAM);
     std::cout << std::fixed << std::setprecision(3)
               << "\nIdle average power consumption:\n"
-              << "\t PKG: " << idleAvPow[Domain::PKG] << " W\n"
-              << "\t PP0: " << idleAvPow[Domain::PP0] << " W\n"
-              << "\t PP1: " << idleAvPow[Domain::PP1] << " W\n"
-              << "\tDRAM: " << idleAvPow[Domain::DRAM] << " W\n";
+              << "\t PKG: " << idleAvPow_[Domain::PKG] << " W\n"
+              << "\t PP0: " << idleAvPow_[Domain::PP0] << " W\n"
+              << "\t PP1: " << idleAvPow_[Domain::PP1] << " W\n"
+              << "\tDRAM: " << idleAvPow_[Domain::DRAM] << " W\n";
 }
 
 void Eco::singleAppRunAndPowerSample(char* const* argv) {
@@ -376,13 +230,11 @@ void Eco::localPowerSample(int usPeriod) {
 
 PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
     devStateLocal_.resetDevice();
-    m->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
     localPowerSample(usPeriod);
-    m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
 
-    return PowAndPerfResult((double)getInstructionsRetired(SysBeforeState, SysAfterState)/1000000,
+    return PowAndPerfResult(devStateLocal_.getPerfCounterSinceReset(),
                             (double)usPeriod/1000000,
-                            currentPowerCapPKG_,
+                            device_->getCurrentPowerCap(),
                             devStateLocal_.getTotalEnergy(Domain::PKG),
                             devStateLocal_.getTotalAveragePower(Domain::PKG),
                             getFilteredPower());
@@ -394,7 +246,7 @@ double Eco::getFilteredPower() {
 
 PowAndPerfResult Eco::setCapAndMeasure(int cap,
                                        int usPeriod) {
-    setPowerCap(cap);
+    device_->setPowerCap(cap);
     return checkPowerAndPerformance(usPeriod);
 }
 
@@ -485,7 +337,7 @@ void Eco::execPhase(
     int childPID,
     PowAndPerfResult& refResult)
 {
-    setPowerCap(powerCap_uW);
+    device_->setPowerCap(powerCap_uW);
     printLine();
     while (status) {
         auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
@@ -500,8 +352,8 @@ void Eco::execPhase(
 
 int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW) {
     // check if default power cap is higher than max power cap (TDP)
-    if (currHighLimit_uW < defaultConstrPKG->longPower) {
-        currHighLimit_uW = defaultConstrPKG->longPower;
+    if (currHighLimit_uW < device_->getDefaultCaps().defaultConstrPKG_->longPower) {
+        currHighLimit_uW = device_->getDefaultCaps().defaultConstrPKG_->longPower;
     }
     // reduce starting high power limit according to first result's average power
     if ((firstResult.avP * 1000000) < (currHighLimit_uW/2)) {
@@ -533,7 +385,6 @@ int Eco::linearSearchForBestPowerCap(
 
     for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step) {
         auto papResult = setCapAndMeasure(limit_uW, cfg_.usTestPhasePeriod_);
-
         std::cout << logCurrentResultLine(papResult, firstResult, cfg_.k_);
         if (currBestResult.isRightBetter(papResult, metric)) {
             currBestResult = std::move(papResult);
@@ -562,7 +413,7 @@ int Eco::goldenSectionSearchForBestPowerCap(
     PowAndPerfResult tmp;
     while ((b - a) > EPSILON) {
         auto fL = measureL ? setCapAndMeasure(leftCandidate, cfg_.usTestPhasePeriod_) : tmp;
-        std::cout << (fL, firstResult, cfg_.k_);
+        std::cout << logCurrentResultLine(fL, firstResult, cfg_.k_);
         auto fR = measureR ? setCapAndMeasure(rightCandidate, cfg_.usTestPhasePeriod_) : tmp;
         std::cout << logCurrentResultLine(fR, firstResult, cfg_.k_);
 
@@ -620,8 +471,8 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
             mainAppProcess(argv, fd);
         }
         else {              // parent process
-            int lowPowLimit_uW = (int)(idleAvPow[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
-            int highPowLimit_uW = cpu_.getNumPackages() * defaultConstrPKG->longPower;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
+            int lowPowLimit_uW = (int)(idleAvPow_[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
+            int highPowLimit_uW = device_->getNumPackages() * device_->getDefaultCaps().defaultConstrPKG_->longPower;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
             int status = 1;
             printHeader();
             waitTime = measureDuration([&, this] {
@@ -638,7 +489,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
                                     firstResult);
             });
             execPhase(bestCap, status, childProcId, firstResult);
-            restoreDefaults();
+            device_->restoreDefaults();
         }
     } else {
         std::cerr << "fork failed" << std::endl;
@@ -657,30 +508,23 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
                                 0.0);
 }
 
-void Eco::setLongTimeWindow(int longTimeWindow) {
-    for (auto& curentPkgDir : packagesDirs_) {
-        writeLimitToFile (curentPkgDir + window0dir, longTimeWindow);
-    }
-}
 
 FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
-    m->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
     singleAppRunAndPowerSample(argv);
-    m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
-
     reportResult();
 
     // TODO: modify this temporary fix printing reference value as max+1
     // pass powerManagIF as a parameter to FinalPowerAndPerfResult constructor
-    return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, //(double)-1,
+    return FinalPowerAndPerfResult(device_->getNumPackages() * devStateGlobal_.getPkgMaxPower(), //(double)-1,
                                 devStateGlobal_.getTotalEnergy(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PP0),
                                 devStateGlobal_.getTotalAveragePower(Domain::PP1),
                                 devStateGlobal_.getTotalAveragePower(Domain::DRAM),
                                 devStateGlobal_.getTotalTime(),
-                              (double)getInstructionsRetired(SysBeforeState, SysAfterState)/1000000,
-                              (double)getCycles(SysBeforeState, SysAfterState)/1000000);
+                                devStateGlobal_.getPerfCounterSinceReset(),
+                                0.0 // num of cycles is not needed, so might be removed in the future
+                                );
 }
 
 FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int numIterations) {
@@ -695,8 +539,8 @@ FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int
 }
 
 void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
-    if (oneSeriesResultVec.size() == 0) {
-        oneSeriesResultVec.emplace_back(devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+    if (fullAppRunResultsContainer_.size() == 0) {
+        fullAppRunResultsContainer_.emplace_back(devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
                                         ref.energy,
                                         ref.pkgPower,
                                         ref.pp0power,
@@ -713,7 +557,7 @@ void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
 
 void Eco::referenceRunWithoutCaps(char* const* argv) {
     auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
-    oneSeriesResultVec.emplace_back(defaultConstrPKG->longPower / 1000000, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+    fullAppRunResultsContainer_.emplace_back(device_->getDefaultCaps().defaultConstrPKG_->longPower / 1000000, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
                                     avResult.energy,
                                     avResult.pkgPower,
                                     avResult.pp0power,
@@ -726,15 +570,24 @@ void Eco::referenceRunWithoutCaps(char* const* argv) {
 }
 
 void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain dom) {
-    if (availableDomains.find(dom) != availableDomains.end()) {
+    // This is legacy method which requires prior referenceRunWithoutCaps() method call.
+    // This method wes used when there was a need for static
+    // evaluation of different power caps for a given power domain.
+    // In recent Intel based CPUs there is no PP0 and PP1 domains so that
+    // it is really only a matter if one want to limit PKG domain or DRAM.
+    // The method will be probably removed soon.
+    // For now the tool supports only PKG domain and static energy profiling is covered
+    // end-to-end by staticEnergyProfiler() method of ECO class.
+    if (device_->isDomainAvailable(dom))
+    {
         stream << "#[INFO] Running tests for domain " << dom << ".\n";
-        const auto ref = oneSeriesResultVec.front(); //TODO: remove the dependency on reference run
+        const auto ref = fullAppRunResultsContainer_.front(); //TODO: remove the dependency on reference run
         stream << std::fixed << std::setprecision(3) << ref << "\n";
         auto powerLimitsVec = generateVecOfPowerCaps(dom);
         auto loopsToDo = powerLimitsVec.size();
         for (auto& currentLimit : powerLimitsVec) {
-            std::cout << loopsToDo << " ";
-            setPowerCap(currentLimit, dom);
+            std::cout << loopsToDo-- << " ";
+            device_->setPowerCap(currentLimit, dom);
             auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
             auto k = getK();
             auto mPlus = EnergyTimeResult(avResult.energy,
@@ -743,7 +596,7 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
             auto mPlusDynamic = (1.0/k) * (ref.getInstrPerSec() / avResult.getInstrPerSec()) *
                                 ((k-1.0) * (avResult.getEnergyPerInstr() / ref.getEnergyPerInstr()) + 1.0);
             auto&& timeDelta = avResult.time_.totalTime_ - ref.time_.totalTime_;
-            oneSeriesResultVec.emplace_back((double)currentLimit / 1000000,
+            fullAppRunResultsContainer_.emplace_back((double)currentLimit / 1000000,
                                             avResult.energy,
                                             avResult.pkgPower,
                                             avResult.pp0power,
@@ -757,26 +610,25 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
                                             100 * (avResult.energy - ref.energy) / ref.energy,
                                             100 * (timeDelta) / ref.time_.totalTime_,
                                             mPlus);
-            stream << oneSeriesResultVec.back() << "\t" << mPlusDynamic << "\n";
-            if (oneSeriesResultVec.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
+            stream << fullAppRunResultsContainer_.back() << "\t" << mPlusDynamic << "\n";
+            if (fullAppRunResultsContainer_.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
                 break;
             }
-            loopsToDo--;
         }
-        restoreDefaults();
+        device_->restoreDefaults();
         stream << "# PowerCap for: min(E): "
-               << std::min_element(oneSeriesResultVec.begin(),
-                                   oneSeriesResultVec.end(),
+               << std::min_element(fullAppRunResultsContainer_.begin(),
+                                   fullAppRunResultsContainer_.end(),
                                    CompareFinalResultsForMinE())->powercap
                << " W, "
                << "min(Et): "
-               << std::min_element(oneSeriesResultVec.begin(),
-                                   oneSeriesResultVec.end(),
+               << std::min_element(fullAppRunResultsContainer_.begin(),
+                                   fullAppRunResultsContainer_.end(),
                                    CompareFinalResultsForMinEt())->powercap
                << " W, "
                << "min(M+): "
-               << std::min_element(oneSeriesResultVec.begin(),
-                                   oneSeriesResultVec.end(),
+               << std::min_element(fullAppRunResultsContainer_.begin(),
+                                   fullAppRunResultsContainer_.end(),
                                    CompareFinalResultsForMplus())->powercap
                << " W.\n";
     } else {
@@ -814,4 +666,72 @@ void Eco::plotPowerLog() {
                     currPKGpower,
                     currDRAMpower,
                     currSMA100power});
+}
+
+void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
+    PowerCapDomain dom = PowerCapDomain::PKG;
+    std::vector<FinalPowerAndPerfResult> resultsVec;
+    const auto&& warmup = runAppWithSampling(argv);
+    stream << "# " << std::fixed << std::setprecision(3) << warmup << "\n";
+    stream << "# warmup done #\n";
+    //
+    FinalPowerAndPerfResult reference;
+    for(auto i = 0; i < cfg_.numIterations_; i++)
+    {
+        auto tmp = runAppWithSampling(argv);
+        reference += tmp;
+        stream << "# " << std::fixed << std::setprecision(3) << tmp << "\n";
+    }
+    reference /= cfg_.numIterations_;
+    //
+    resultsVec.push_back(reference);
+    stream << reference << "\n";
+    auto powerLimitsVec = generateVecOfPowerCaps(dom);
+    auto loopsToDo = powerLimitsVec.size();
+    for (auto& currentLimit : powerLimitsVec) {
+        std::cout << loopsToDo-- << " ";
+        device_->setPowerCap(currentLimit, dom);
+        auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
+        auto k = getK();
+        auto mPlus = EnergyTimeResult(avResult.energy,
+                                        avResult.time_.totalTime_,
+                                        avResult.pkgPower).checkPlusMetric(reference.getEnergyAndTime(), k);
+        auto mPlusDynamic = (1.0/k) * (reference.getInstrPerSec() / avResult.getInstrPerSec()) *
+                            ((k-1.0) * (avResult.getEnergyPerInstr() / reference.getEnergyPerInstr()) + 1.0);
+        auto&& timeDelta = avResult.time_.totalTime_ - reference.time_.totalTime_;
+        resultsVec.emplace_back((double)currentLimit / 1000000,
+                                 avResult.energy,
+                                 avResult.pkgPower,
+                                 avResult.pp0power,
+                                 avResult.pp1power,
+                                 avResult.dramPower,
+                                 avResult.time_.totalTime_,
+                                 avResult.inst,
+                                 avResult.cycl,
+                                 avResult.energy - reference.energy,
+                                 timeDelta,
+                                 100 * (avResult.energy - reference.energy) / reference.energy,
+                                 100 * (timeDelta) / reference.time_.totalTime_,
+                                 mPlus);
+        stream << resultsVec.back() << "\t" << mPlusDynamic << "\n";
+        if (resultsVec.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
+            break;
+        }
+    }
+    device_->restoreDefaults();
+    stream << "# PowerCap for: min(E): "
+            << std::min_element(resultsVec.begin(),
+                                resultsVec.end(),
+                                CompareFinalResultsForMinE())->powercap
+            << " W, "
+            << "min(Et): "
+            << std::min_element(resultsVec.begin(),
+                                resultsVec.end(),
+                                CompareFinalResultsForMinEt())->powercap
+            << " W, "
+            << "min(M+): "
+            << std::min_element(resultsVec.begin(),
+                                resultsVec.end(),
+                                CompareFinalResultsForMplus())->powercap
+            << " W.\n";
 }

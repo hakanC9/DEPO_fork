@@ -5,14 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 include_directories(/usr/local/cuda/include)
 include(CMakeLists.txt.in)
 
-set(OPENSSL_USE_STATIC_LIBS TRUE)
-find_package(OpenSSL REQUIRED)
-
 # build eco library from sources
 add_library(
     eco
     src/Eco.hpp
     src/Eco.cpp
+    src/gpu_eco.hpp
+    src/gpu_eco.cpp
     src/power_if/Rapl.hpp
     src/power_if/Rapl.cpp
     src/device/Device.hpp
@@ -43,7 +42,6 @@ add_library(
 add_dependencies(
     eco
     pcm
-    #smtp-mail
     gnuplot-iostream
     )
 
@@ -53,16 +51,14 @@ set(COMMON_LIBS
     ${CMAKE_CURRENT_BINARY_DIR}/pcm-src/libPCM.a
     m
     rt
-    # ${CMAKE_CURRENT_BINARY_DIR}/smtp-mail-build/libsmtpclient.a
-    OpenSSL::Crypto
-    OpenSSL::SSL
     dl
-    pthread  # these libs are linked from the bottom to the top and
-             # there is a dependency: pthread <- dl <- ssl <- crypto
+    pthread
     boost_iostreams
     boost_system
     boost_filesystem
     boost_program_options
+    nvidia-ml
+    cuda
     )
 
 # build Static Energy Profiler
@@ -73,8 +69,6 @@ add_executable(
 
 target_link_libraries(
     StEP
-    nvidia-ml
-    cuda
     ${COMMON_LIBS}
     )
 
