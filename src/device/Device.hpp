@@ -59,8 +59,7 @@ class Device
 public:
     Device();
     ~Device() {}
-    int getNumPackages();
-    int getModel();
+    int getDeviceMaxPowerInWatts() const;
     void restoreDefaults();
     std::string getCPUname();
     RaplDefaults getDefaultCaps() const;

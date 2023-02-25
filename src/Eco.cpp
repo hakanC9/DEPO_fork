@@ -113,7 +113,7 @@ std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
     lowPowLimit_uW = lowPowLimit_uW; // TODO: don't use hack
     // TODO: this is hack, should be handled by using power budget (power cap) on each pkg, not by division here
 
-    int highPowLimit_uW = device_->getNumPackages() * device_->getDefaultCaps().defaultConstrPKG_->longPower;//(int)(highPowW * 1000000 + 0.5); // same
+    int highPowLimit_uW = device_->getDeviceMaxPowerInWatts() * 1000000;//(int)(highPowW * 1000000 + 0.5); // same
     int step = ((highPowLimit_uW - lowPowLimit_uW)/ 100) * cfg_.percentStep_;
     for (int limit_uW = highPowLimit_uW; limit_uW > lowPowLimit_uW; limit_uW -= step) {
         powerLimitsVec.push_back(limit_uW);
@@ -472,7 +472,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         }
         else {              // parent process
             int lowPowLimit_uW = (int)(idleAvPow_[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
-            int highPowLimit_uW = device_->getNumPackages() * device_->getDefaultCaps().defaultConstrPKG_->longPower;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
+            int highPowLimit_uW = device_->getDeviceMaxPowerInWatts() * 1000000;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
             int status = 1;
             printHeader();
             waitTime = measureDuration([&, this] {
@@ -515,7 +515,7 @@ FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
 
     // TODO: modify this temporary fix printing reference value as max+1
     // pass powerManagIF as a parameter to FinalPowerAndPerfResult constructor
-    return FinalPowerAndPerfResult(device_->getNumPackages() * devStateGlobal_.getPkgMaxPower(), //(double)-1,
+    return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(), //(double)-1,
                                 devStateGlobal_.getTotalEnergy(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PKG),
                                 devStateGlobal_.getTotalAveragePower(Domain::PP0),

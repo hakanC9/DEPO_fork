@@ -74,12 +74,9 @@ Device::Device() {
 	std::cout << "INFO: Device constructor called!\n";
 }
 
-int Device::getNumPackages() {
-    return totalPackages_;
-}
-
-int Device::getModel() {
-    return model_;
+int Device::getDeviceMaxPowerInWatts() const
+{
+    return (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000;
 }
 
 std::string Device::getCPUname() {
@@ -274,7 +271,7 @@ void Device::detectPowerCapsAvailability() {
 void Device::prepareRaplDirsFromAvailableDomains()
 {
     // TODO: rework below loop and verify correctness for KNL and KNM
-    for (unsigned i = 0; i < this->getNumPackages(); i++) {
+    for (unsigned i = 0; i < totalPackages_; i++) {
         raplDirs_.packagesDirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + "/");
         if (devicePowerProfile_.pp0_) {
             raplDirs_.pp0Dirs_.emplace_back(raplDirs_.raplBaseDirectory_ + std::to_string(i) + ":0/");
@@ -379,7 +376,7 @@ double Device::getCurrentPowerCap() const
 }
 
 void Device::setPowerCap(int cap, Domain dom) {
-    auto&& numPkgs = this->getNumPackages(); // packagesDirs_.size();
+    auto&& numPkgs = totalPackages_; // packagesDirs_.size();
     auto singlePKGcap = cap / numPkgs;
     switch (dom) {
         case PowerCapDomain::PKG :
