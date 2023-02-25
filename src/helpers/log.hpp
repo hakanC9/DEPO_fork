@@ -69,7 +69,7 @@ std::string logCurrentGpuResultLine(
     double currRelativeEDP = reference.getEnergyTimeProd() / curr.getEnergyTimeProd();
     sstream << timeInMs
             << std::fixed << std::setprecision(2)
-            << "\t\t" << curr.pCap / 1000
+            << "\t\t" << curr.pCap
             << "\t\t" << curr.avP
             << "\t\t" << curr.energy
             // << "\t\t" << currKernelsCount

@@ -345,7 +345,7 @@ void Device::readAndStoreDefaultLimits() {
 }
 
 void Device::restoreDefaults () {
-    currentPowerCapPKG_ = DEFAULT_LIMIT;
+    currentPowerLimitInWatts_ = DEFAULT_LIMIT;
     //assume that both PKGs has the same limits
     for (auto& currentPkgDir : raplDirs_.packagesDirs_) {
         writeLimitToFile (currentPkgDir + raplDirs_.pl0dir_, raplDefaultCaps_.defaultConstrPKG_->longPower);
@@ -370,14 +370,14 @@ void Device::restoreDefaults () {
     }
 }
 
-double Device::getCurrentPowerCap() const
+double Device::getPowerLimitInWatts() const
 {
-	return currentPowerCapPKG_;
+	return currentPowerLimitInWatts_;
 }
 
-void Device::setPowerCap(int cap, Domain dom) {
+void Device::setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain dom) {
     auto&& numPkgs = totalPackages_; // packagesDirs_.size();
-    auto singlePKGcap = cap / numPkgs;
+    auto singlePKGcap = limitInMicroW / numPkgs;
     switch (dom) {
         case PowerCapDomain::PKG :
             setLongTimeWindow(raplDefaultCaps_.defaultConstrPKG_->longWindow/10); // set to 100ms
@@ -386,24 +386,24 @@ void Device::setPowerCap(int cap, Domain dom) {
                 //TODO: rework below temporary solution
                 //      move current cap to power interface class
                 //      along with this whole method setPowerCap
-                currentPowerCapPKG_ = (double)cap / 1000000;
+                currentPowerLimitInWatts_ = (double)limitInMicroW / 1000000;
             }
             break;
         case PowerCapDomain::PP0 :
             for (auto& curentPP0dir : raplDirs_.pp0Dirs_) {
-                writeLimitToFile(curentPP0dir + raplDirs_.pl0dir_, cap);
+                writeLimitToFile(curentPP0dir + raplDirs_.pl0dir_, limitInMicroW);
                 writeLimitToFile(curentPP0dir + raplDirs_.isEnabledDir_, 1);
             }
             break;
         case PowerCapDomain::PP1 :
             for (auto& curentPP1dir : raplDirs_.pp1Dirs_) {
-                writeLimitToFile(curentPP1dir + raplDirs_.pl0dir_, cap);
+                writeLimitToFile(curentPP1dir + raplDirs_.pl0dir_, limitInMicroW);
                 writeLimitToFile(curentPP1dir + raplDirs_.isEnabledDir_, 1);
             }
             break;
         case PowerCapDomain::DRAM :
             for (auto& curentDRAMdir : raplDirs_.dramDirs_) {
-                writeLimitToFile(curentDRAMdir + raplDirs_.pl0dir_, cap);
+                writeLimitToFile(curentDRAMdir + raplDirs_.pl0dir_, limitInMicroW);
                 writeLimitToFile(curentDRAMdir + raplDirs_.isEnabledDir_, 1);
             }
             break;

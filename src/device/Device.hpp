@@ -59,12 +59,14 @@ class Device
 public:
     Device();
     ~Device() {}
+
+    double getPowerLimitInWatts() const;
+    void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG);
+
     int getDeviceMaxPowerInWatts() const;
     void restoreDefaults();
     std::string getCPUname();
     RaplDefaults getDefaultCaps() const;
-    void setPowerCap(int, Domain = PowerCapDomain::PKG);
-    double getCurrentPowerCap() const;
     AvailablePowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
     void resetPerfCounters();
@@ -89,7 +91,7 @@ private:
     RaplDirs raplDirs_;
     RaplDefaults raplDefaultCaps_;
     static constexpr double DEFAULT_LIMIT {300.0};
-    double currentPowerCapPKG_ {DEFAULT_LIMIT};
+    double currentPowerLimitInWatts_ {DEFAULT_LIMIT};
     const std::string defaultLimitsFile_ {"./default_limits_dump.txt"};
     pcm::SystemCounterState sysBeforeState_, sysAfterState_;
     std::vector<pcm::CoreCounterState> beforeState_, afterState_;

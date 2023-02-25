@@ -46,8 +46,9 @@ class CudaDevice // this class should be named "cuda device container or sth lik
   public:
     CudaDevice(int devID = 0);
 
-    int getPowerLimit(unsigned deviceID);
-    void setPowerLimit(unsigned deviceID, int limitInWatts);
+    double getPowerLimitInWatts(unsigned deviceID) const;
+
+    void setPowerLimitInMicroWatts(unsigned deviceID, unsigned long limitInMicroW);
     std::pair<unsigned, unsigned> getMinMaxLimitInWatts(unsigned deviceID);
     void resetKernelCounterRegister();
     double getCurrentPowerInWattsForDeviceID(); // this method shall have the input parameter "deviceID" back
@@ -149,7 +150,8 @@ class GpuEco : public EcoApi
   private:
     std::shared_ptr<CudaDevice> gpu_;
     std::unique_ptr<GpuDeviceState> deviceState_;
-    unsigned minPowerLimit_, maxPowerLimit_, defaultPowerLimit_;
+    unsigned minPowerLimit_, maxPowerLimit_;
+    double defaultPowerLimit_;
     int deviceID_;
     std::ofstream outPowerFile_;
     std::unique_ptr<BothStream> bout_;

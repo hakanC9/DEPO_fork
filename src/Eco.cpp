@@ -143,7 +143,7 @@ void Eco::raplSample() {
                      << std::chrono::duration_cast<MS>(
                         std::chrono::high_resolution_clock::now() - startTime_).count()
                     //   << std::chrono::system_clock::to_time_t(std::chrono::high_resolution_clock::now())
-                     << "\t" << device_->getCurrentPowerCap() << "\t"
+                     << "\t" << device_->getPowerLimitInWatts() << "\t"
                      << currPower << "\t"
                      << currSMA << "\t"
                      << filter2order_.getSMA() << "\t"
@@ -234,7 +234,7 @@ PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
 
     return PowAndPerfResult(devStateLocal_.getPerfCounterSinceReset(),
                             (double)usPeriod/1000000,
-                            device_->getCurrentPowerCap(),
+                            device_->getPowerLimitInWatts(),
                             devStateLocal_.getTotalEnergy(Domain::PKG),
                             devStateLocal_.getTotalAveragePower(Domain::PKG),
                             getFilteredPower());
@@ -246,7 +246,7 @@ double Eco::getFilteredPower() {
 
 PowAndPerfResult Eco::setCapAndMeasure(int cap,
                                        int usPeriod) {
-    device_->setPowerCap(cap);
+    device_->setPowerLimitInMicroWatts(cap);
     return checkPowerAndPerformance(usPeriod);
 }
 
@@ -337,7 +337,7 @@ void Eco::execPhase(
     int childPID,
     PowAndPerfResult& refResult)
 {
-    device_->setPowerCap(powerCap_uW);
+    device_->setPowerLimitInMicroWatts(powerCap_uW);
     printLine();
     while (status) {
         auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
@@ -587,7 +587,7 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
         auto loopsToDo = powerLimitsVec.size();
         for (auto& currentLimit : powerLimitsVec) {
             std::cout << loopsToDo-- << " ";
-            device_->setPowerCap(currentLimit, dom);
+            device_->setPowerLimitInMicroWatts(currentLimit, dom);
             auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
             auto k = getK();
             auto mPlus = EnergyTimeResult(avResult.energy,
@@ -690,7 +690,7 @@ void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
     auto loopsToDo = powerLimitsVec.size();
     for (auto& currentLimit : powerLimitsVec) {
         std::cout << loopsToDo-- << " ";
-        device_->setPowerCap(currentLimit, dom);
+        device_->setPowerLimitInMicroWatts(currentLimit, dom);
         auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
         auto k = getK();
         auto mPlus = EnergyTimeResult(avResult.energy,
