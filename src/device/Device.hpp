@@ -62,10 +62,10 @@ public:
 
     double getPowerLimitInWatts() const;
     void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG);
+    std::string getName() const;
 
     int getDeviceMaxPowerInWatts() const;
     void restoreDefaults();
-    std::string getCPUname();
     RaplDefaults getDefaultCaps() const;
     AvailablePowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
@@ -80,7 +80,7 @@ private:
     void prepareRaplDirsFromAvailableDomains();
     void readAndStoreDefaultLimits();
     void initPerformanceCounters();
-    std::string mapCpuFamilyName(int& model);
+    std::string mapCpuFamilyName(int model) const;
     void setLongTimeWindow(int); // might be useless
 
     int totalPackages_ {0};

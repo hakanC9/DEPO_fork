@@ -79,7 +79,8 @@ int Device::getDeviceMaxPowerInWatts() const
     return (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000;
 }
 
-std::string Device::getCPUname() {
+std::string Device::getName() const
+{
     return mapCpuFamilyName(model_);
 }
 
@@ -168,8 +169,10 @@ void Device::detectPackages() {
 	printf("\tDetected %d cores in %d packages\n\n", totalCores_, totalPackages_);
 }
 
-std::string Device::mapCpuFamilyName(int& model){
-	switch(model) {
+std::string Device::mapCpuFamilyName(int model) const
+{
+	switch(model)
+    {
 		case CPU_SANDYBRIDGE:
 			return std::string("Sandybridge");
 		case CPU_SANDYBRIDGE_EP:
@@ -213,13 +216,13 @@ std::string Device::mapCpuFamilyName(int& model){
 		case CPU_ATOM_DENVERTON:
 			return std::string("Atom");
 		default:
-			model=-1;
             return std::string("Unsupported model");
 	}
 }
 
 void Device::detectPowerCapsAvailability() {
-	if (model_ < 0) {
+	if (model_ < 0)
+    {
 		printf("\tUnsupported CPU model %d\n", model_);
 	} //TODO - throw exception and handle it in Eco/Rapl
 

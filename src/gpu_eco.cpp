@@ -133,6 +133,19 @@ double CudaDevice::getPowerLimitInWatts(unsigned deviceID) const
     return (double)currPowerLimitInMilliWatts / 1000;
 }
 
+std::string CudaDevice::getName(unsigned deviceID) const
+{
+    constexpr unsigned maxLength = 96;
+    char name[maxLength];
+    nvmlReturn_t nvResult = nvmlDeviceGetName (deviceHandles_[deviceID], name, maxLength);
+    if (NVML_SUCCESS != nvResult)
+    {
+        printf("Failed to GET device name: %s\n", nvmlErrorString(nvResult));
+        return std::string("Unknown GPU");
+    }
+    return std::string(name);
+}
+
 std::pair<unsigned, unsigned> CudaDevice::getMinMaxLimitInWatts(unsigned deviceID)
 {
     unsigned min = 0, max = 0;
@@ -495,7 +508,7 @@ void GpuEco::plotPowerLog()
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 4,
                                     imgFileName.end(),
                                     ".png"));
-    p.setPlotTitle("Dynamic power capping for NVIDIA GPU");
+    p.setPlotTitle("Power log - " + getDeviceName());
     Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
     Series currPower (outPowerFileName_, 1, 3, "P[W]");
     Series currENG (outPowerFileName_, 1, 7, "ENG");

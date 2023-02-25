@@ -54,6 +54,8 @@ class EcoApi
     virtual FinalPowerAndPerfResult runAppWithSampling(char* const*, int) = 0;
     virtual FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int) = 0;
     virtual void plotPowerLog() = 0;
+    virtual std::string getDeviceName() const = 0;
+
     double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
     void setCustomK(double k) { cfg_.k_ = k; } // temporary setter until Eco is reorganised
     int getNumIterations() { return cfg_.numIterations_; }
@@ -81,7 +83,7 @@ class Eco : public EcoApi
     FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int = 1) override;
     void storeReferenceRun(FinalPowerAndPerfResult&);
     void plotPowerLog() override;
-    std::string getCpuName() { return device_->getCPUname(); }
+    std::string getDeviceName() const override { return device_->getName(); }
     void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
     Eco(std::shared_ptr<Device>);

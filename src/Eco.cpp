@@ -655,7 +655,7 @@ void Eco::plotPowerLog() {
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 3,
                                       imgFileName.end(),
                                       "png"));
-    p.setPlotTitle(getCpuName() + " Power Log");
+    p.setPlotTitle("Power Log - " + getDeviceName());
     Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
     Series currPKGpower (outPowerFileName_, 1, 3, "current PKG P[W]");
     Series currSMA50power (outPowerFileName_, 1, 4, "SMA50 PKG P[W]");

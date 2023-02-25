@@ -47,8 +47,9 @@ class CudaDevice // this class should be named "cuda device container or sth lik
     CudaDevice(int devID = 0);
 
     double getPowerLimitInWatts(unsigned deviceID) const;
-
     void setPowerLimitInMicroWatts(unsigned deviceID, unsigned long limitInMicroW);
+    std::string getName(unsigned deviceID) const;
+
     std::pair<unsigned, unsigned> getMinMaxLimitInWatts(unsigned deviceID);
     void resetKernelCounterRegister();
     double getCurrentPowerInWattsForDeviceID(); // this method shall have the input parameter "deviceID" back
@@ -125,6 +126,7 @@ class GpuEco : public EcoApi
 
     void plotPowerLog() override;
     void waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec);
+    std::string getDeviceName() const override { return gpu_->getName(deviceID_); }
 
     PowAndPerfResult getReferenceResult(const int referenceSampleTimeInMilliSec);
 
