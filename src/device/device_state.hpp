@@ -19,12 +19,18 @@
 #include "Device.hpp"
 #include "../power_if/Rapl.hpp"
 
-class DeviceState {
+class DeviceStateAccumulator {
 public:
-    DeviceState(std::shared_ptr<Device>);
-    ~DeviceState() {}
-    double getTotalAveragePower(Domain d);
-    double getTotalEnergy(Domain d);
+    DeviceStateAccumulator(std::shared_ptr<Device>);
+    ~DeviceStateAccumulator() {}
+
+    /*
+      getEnergySinceReset - is used for the final evaluation of energy consumed
+
+      returns the integrate of energy sampled since last Accumulator reset.
+    */
+    double getEnergySinceReset(Domain d) const;
+
     std::vector<double> getTotalEnergyVec(Domain d);
     double getTotalTime();
     void sample();

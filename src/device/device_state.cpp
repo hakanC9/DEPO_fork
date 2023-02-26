@@ -18,17 +18,17 @@
 
 #include <set>
 
-DeviceState::DeviceState(std::shared_ptr<Device> d) :
+DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<Device> d) :
     device_(d)
 {
     for (auto&& cpuCore : device_->pkgToFirstCoreMap_)
     {
         raplVec_.emplace_back(cpuCore, device_->getAvailablePowerDomains());
-        std::cout << "INFO: created RAPL object for core " << cpuCore << " in DeviceState.\n";
+        std::cout << "INFO: created RAPL object for core " << cpuCore << " in DeviceStateAccumulator.\n";
     }
 }
 
-void DeviceState::resetDevice() {
+void DeviceStateAccumulator::resetDevice() {
     for (auto&& rapl : raplVec_)
     {
         rapl.reset();
@@ -36,14 +36,14 @@ void DeviceState::resetDevice() {
     device_->resetPerfCounters();
 }
 
-void DeviceState::sample() {
+void DeviceStateAccumulator::sample() {
     for (auto&& rapl : raplVec_)
     {
         rapl.sample();
     }
 }
 
-double DeviceState::getCurrentPower(Domain d) {
+double DeviceStateAccumulator::getCurrentPower(Domain d) {
     double result = 0.0;
     for (auto&& rapl : raplVec_)
     {
@@ -52,28 +52,18 @@ double DeviceState::getCurrentPower(Domain d) {
     return result;
 }
 
-double DeviceState::getPerfCounterSinceReset()
+double DeviceStateAccumulator::getPerfCounterSinceReset()
 {
     return device_->getNumInstructionsSinceReset();
 }
 
-double DeviceState::getPkgMaxPower()
+double DeviceStateAccumulator::getPkgMaxPower()
 {
     return raplVec_.front().pkg_max_power() * raplVec_.size();
     //above may cause problems when vector is empty or when two different CPUs are in one device
 }
 
-double DeviceState::getTotalAveragePower(Domain d)
-{
-    double result = 0.0;
-    for (auto&& rapl : raplVec_)
-    {
-        result += rapl.getAveragePower()[d];
-    }
-    return result;
-}
-
-double DeviceState::getTotalTime()
+double DeviceStateAccumulator::getTotalTime()
 {
     std::set<double> timeSet;
     for (auto&& rapl : raplVec_) {
@@ -82,7 +72,7 @@ double DeviceState::getTotalTime()
     return *timeSet.rbegin(); // set is sorted containter
 }
 
-double DeviceState::getTotalEnergy(Domain d)
+double DeviceStateAccumulator::getEnergySinceReset(Domain d) const
 {
     double result = 0.0;
     for (auto&& rapl : raplVec_) {
@@ -91,7 +81,7 @@ double DeviceState::getTotalEnergy(Domain d)
     return result;
 }
 
-std::vector<double> DeviceState::getTotalEnergyVec(Domain d)
+std::vector<double> DeviceStateAccumulator::getTotalEnergyVec(Domain d)
 {
     std::vector<double> result;
     for (auto&& rapl : raplVec_) {

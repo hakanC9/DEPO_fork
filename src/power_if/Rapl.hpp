@@ -90,11 +90,11 @@ public:
 
 	double pkg_max_power();
 
-	double pkg_total_energy();
-	double pp0_total_energy();
-	double pp1_total_energy();
-	double dram_total_energy();
-	EnergyCrossDomains getTotalEnergy();
+	double pkg_total_energy() const;
+	double pp0_total_energy() const;
+	double pp1_total_energy() const;
+	double dram_total_energy() const;
+	EnergyCrossDomains getTotalEnergy() const;
 	PowerCrossDomains getAveragePower();
 	PowerCrossDomains getCurrentPower();
 

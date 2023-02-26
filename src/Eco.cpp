@@ -110,10 +110,8 @@ std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
     std::vector<int> powerLimitsVec;
 
     int lowPowLimit_uW = (int)(idleAvPow_[dom] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
-    lowPowLimit_uW = lowPowLimit_uW; // TODO: don't use hack
-    // TODO: this is hack, should be handled by using power budget (power cap) on each pkg, not by division here
-
     int highPowLimit_uW = device_->getDeviceMaxPowerInWatts() * 1000000;//(int)(highPowW * 1000000 + 0.5); // same
+
     int step = ((highPowLimit_uW - lowPowLimit_uW)/ 100) * cfg_.percentStep_;
     for (int limit_uW = highPowLimit_uW; limit_uW > lowPowLimit_uW; limit_uW -= step) {
         powerLimitsVec.push_back(limit_uW);
@@ -167,10 +165,12 @@ void Eco::checkIdlePowerConsumption() {
     }
     std::cout << FLUSH_AND_RETURN;
     // TODO: assign structure object, not each element separately
-    idleAvPow_[Domain::PKG] = devStateGlobal_.getTotalAveragePower(Domain::PKG);
-    idleAvPow_[Domain::PP0] = devStateGlobal_.getTotalAveragePower(Domain::PP0);
-    idleAvPow_[Domain::PP1] = devStateGlobal_.getTotalAveragePower(Domain::PP1);
-    idleAvPow_[Domain::DRAM] = devStateGlobal_.getTotalAveragePower(Domain::DRAM);
+    double totalTimeInSeconds = devStateGlobal_.getTotalTime();
+
+    idleAvPow_[Domain::PKG] = devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds;
+    idleAvPow_[Domain::PP0] = devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds;
+    idleAvPow_[Domain::PP1] = devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds;
+    idleAvPow_[Domain::DRAM] = devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds;
     std::cout << std::fixed << std::setprecision(3)
               << "\nIdle average power consumption:\n"
               << "\t PKG: " << idleAvPow_[Domain::PKG] << " W\n"
@@ -231,12 +231,14 @@ void Eco::localPowerSample(int usPeriod) {
 PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
     devStateLocal_.resetDevice();
     localPowerSample(usPeriod);
+    double timeInSeconds = (double)usPeriod / 10e6;
+    double energyInJoules = devStateLocal_.getEnergySinceReset(Domain::PKG);
 
     return PowAndPerfResult(devStateLocal_.getPerfCounterSinceReset(),
-                            (double)usPeriod/1000000,
+                            timeInSeconds,
                             device_->getPowerLimitInWatts(),
-                            devStateLocal_.getTotalEnergy(Domain::PKG),
-                            devStateLocal_.getTotalAveragePower(Domain::PKG),
+                            energyInJoules,
+                            energyInJoules / timeInSeconds, // Joules / seconds
                             getFilteredPower());
 }
 
@@ -277,7 +279,7 @@ void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b) {
 
 void Eco::reportResult(double waitTime, double testTime) {
     auto&& energyVec = devStateGlobal_.getTotalEnergyVec(Domain::PKG);
-    auto&& totalE = devStateGlobal_.getTotalEnergy(Domain::PKG);
+    auto&& totalE = devStateGlobal_.getEnergySinceReset(Domain::PKG);
     auto&& totalTime = devStateGlobal_.getTotalTime();
     std::cout << "Total E: " << totalE;
     int pkgID = 0;
@@ -285,7 +287,7 @@ void Eco::reportResult(double waitTime, double testTime) {
         pkgID++;
         std::cout << "\nPKG" << pkgID << ": " << pkgE << ", (" << (pkgE/totalE)*100 << "%)";
     }
-    std::cout << "\nTotal P: " << devStateGlobal_.getTotalAveragePower(Domain::PKG) <<
+    std::cout << "\nTotal P: " << totalE / totalTime <<
                  "\nTotal t: " << totalTime << "s\n";
     if (waitTime != 0.0 || testTime != 0.0) {
         std::cout << "Wait time: " << waitTime << "s, (" << (waitTime/totalTime)*100 << "%)\n"
@@ -497,13 +499,15 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         // return 1;
     }
     reportResult(waitTime, testTime);
-    return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, //(double)-1,
-                                devStateGlobal_.getTotalEnergy(Domain::PKG),
-                                devStateGlobal_.getTotalAveragePower(Domain::PKG),
-                                devStateGlobal_.getTotalAveragePower(Domain::PP0),
-                                devStateGlobal_.getTotalAveragePower(Domain::PP1),
-                                devStateGlobal_.getTotalAveragePower(Domain::DRAM),
-                                TimeResult(devStateGlobal_.getTotalTime(), waitTime, testTime),
+    double totalTimeInSeconds = devStateGlobal_.getTotalTime();
+
+    return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, 
+                                devStateGlobal_.getEnergySinceReset(Domain::PKG),
+                                devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds,
+                                TimeResult(totalTimeInSeconds, waitTime, testTime),
                                 0.0,
                                 0.0);
 }
@@ -512,16 +516,15 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
 FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
     singleAppRunAndPowerSample(argv);
     reportResult();
+    double totalTimeInSeconds = devStateGlobal_.getTotalTime();
 
-    // TODO: modify this temporary fix printing reference value as max+1
-    // pass powerManagIF as a parameter to FinalPowerAndPerfResult constructor
-    return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(), //(double)-1,
-                                devStateGlobal_.getTotalEnergy(Domain::PKG),
-                                devStateGlobal_.getTotalAveragePower(Domain::PKG),
-                                devStateGlobal_.getTotalAveragePower(Domain::PP0),
-                                devStateGlobal_.getTotalAveragePower(Domain::PP1),
-                                devStateGlobal_.getTotalAveragePower(Domain::DRAM),
-                                devStateGlobal_.getTotalTime(),
+    return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(),
+                                devStateGlobal_.getEnergySinceReset(Domain::PKG),
+                                devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds,
+                                totalTimeInSeconds,
                                 devStateGlobal_.getPerfCounterSinceReset(),
                                 0.0 // num of cycles is not needed, so might be removed in the future
                                 );

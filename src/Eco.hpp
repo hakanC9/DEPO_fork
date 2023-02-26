@@ -72,18 +72,19 @@ class EcoApi
 class Eco : public EcoApi
 {
   public:
-    void referenceRunWithoutCaps(char* const*);
-    void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
     void idleSample(int idleTimeS) override;
-    FinalPowerAndPerfResult runAppWithLinearSearch(char* const*,
-                                                   TargetMetric = TargetMetric::MIN_E);
-    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1);
-    FinalPowerAndPerfResult runAppWithGoldenSectionSearch(char* const*,
-                                                          TargetMetric = TargetMetric::MIN_E);
+    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1) override;
     FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int = 1) override;
-    void storeReferenceRun(FinalPowerAndPerfResult&);
     void plotPowerLog() override;
     std::string getDeviceName() const override { return device_->getName(); }
+
+    void referenceRunWithoutCaps(char* const*);
+    void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
+    FinalPowerAndPerfResult runAppWithLinearSearch(char* const*,
+                                                   TargetMetric = TargetMetric::MIN_E);
+    FinalPowerAndPerfResult runAppWithGoldenSectionSearch(char* const*,
+                                                          TargetMetric = TargetMetric::MIN_E);
+    void storeReferenceRun(FinalPowerAndPerfResult&);
     void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
     Eco(std::shared_ptr<Device>);
@@ -109,8 +110,8 @@ class Eco : public EcoApi
     double pprevSMA_ {0.0}, prevSMA_ {0.0};
     bool optimizationTrigger_ {false};
 
-    DeviceState devStateGlobal_;
-    DeviceState devStateLocal_;
+    DeviceStateAccumulator devStateGlobal_;
+    DeviceStateAccumulator devStateLocal_;
     std::vector<FinalPowerAndPerfResult> fullAppRunResultsContainer_;
 
     WatchdogStatus defaultWatchdog;

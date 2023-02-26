@@ -184,19 +184,23 @@ double Rapl::dram_average_power() {
     return dram_total_energy() / total_time();
 }
 
-double Rapl::pkg_total_energy() {
+double Rapl::pkg_total_energy() const
+{
     return energy_units * ((double) totalResultSinceLastReset_.pkg_);
 }
 
-double Rapl::pp0_total_energy() {
+double Rapl::pp0_total_energy() const
+{
     return energy_units * ((double) totalResultSinceLastReset_.pp0_);
 }
 
-double Rapl::pp1_total_energy() {
+double Rapl::pp1_total_energy() const
+{
     return energy_units * ((double) totalResultSinceLastReset_.pp1_);
 }
 
-double Rapl::dram_total_energy() {
+double Rapl::dram_total_energy() const
+{
     return dram_energy_units * ((double) totalResultSinceLastReset_.dram_);
 }
 
@@ -214,7 +218,8 @@ double Rapl::pkg_max_power() {
     return maxPower ? maxPower : pkgPowerInfo.thermalDesignPower;
 }
 
-EnergyCrossDomains Rapl::getTotalEnergy() {
+EnergyCrossDomains Rapl::getTotalEnergy() const
+{
     EnergyCrossDomains result;
     result[Domain::PKG] = pkg_total_energy();
     result[Domain::PP0] = pp0_total_energy();
