@@ -43,11 +43,13 @@ uint64_t RaplStateSequence::energyDelta(uint64_t before, uint64_t after) {
 	}
 }
 
-double RaplStateSequence::timeDelta(TimePoint& begin, TimePoint& end) {
+double RaplStateSequence::timeDelta(const TimePoint& begin, const TimePoint& end) const
+{
     return std::chrono::duration<double>(end-begin).count();
 }
 
-double RaplStateSequence::getTotalTime(TimePoint startTime) {
+double RaplStateSequence::getTotalTime(TimePoint startTime) const
+{
 	return timeDelta(startTime, current_.timeSec_);
 }
 
@@ -169,19 +171,19 @@ double Rapl::dram_current_power() {
 }
 
 double Rapl::pkg_average_power() {
-    return pkg_total_energy() / total_time();
+    return pkg_total_energy() / get_total_time();
 }
 
 double Rapl::pp0_average_power() {
-    return pp0_total_energy() / total_time();
+    return pp0_total_energy() / get_total_time();
 }
 
 double Rapl::pp1_average_power() {
-    return pp1_total_energy() / total_time();
+    return pp1_total_energy() / get_total_time();
 }
 
 double Rapl::dram_average_power() {
-    return dram_total_energy() / total_time();
+    return dram_total_energy() / get_total_time();
 }
 
 double Rapl::pkg_total_energy() const
@@ -204,7 +206,8 @@ double Rapl::dram_total_energy() const
     return dram_energy_units * ((double) totalResultSinceLastReset_.dram_);
 }
 
-double Rapl::total_time() {
+double Rapl::get_total_time() const
+{
     return rss_.getTotalTime(totalResultSinceLastReset_.timeSec_);
 }
 

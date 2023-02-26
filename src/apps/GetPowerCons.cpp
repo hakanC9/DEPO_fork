@@ -86,12 +86,12 @@ int main(int argc, char *argv[]) {
 				<< ds.getCurrentPower(Domain::PP0) << "\t"
 				<< ds.getCurrentPower(Domain::PP1) << "\t"
 				<< ds.getCurrentPower(Domain::DRAM) << "\t"
-				<< ds.getTotalTime() << std::endl;
+				<< ds.getTimeSinceReset() << std::endl;
 				waitpid(childProcId, &status, WNOHANG);	
 			}
 			wait(&status);
 
-    		double totalTimeInSeconds = ds.getTotalTime();
+			double totalTimeInSeconds = ds.getTimeSinceReset();
 
 			std::cout << std::endl
 				<< "\t PKG Total Energy:\t" << ds.getEnergySinceReset(Domain::PKG) << " J" << std::endl

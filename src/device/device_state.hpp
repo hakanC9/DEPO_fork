@@ -31,8 +31,17 @@ public:
     */
     double getEnergySinceReset(Domain d) const;
 
-    std::vector<double> getTotalEnergyVec(Domain d);
-    double getTotalTime();
+    /*
+      getTimeSinceReset - is used for the final evaluation of time spent on computations
+
+      returns the time difference between now and last Accumulator reset.
+    */
+    double getTimeSinceReset() const;
+
+    // Temporary disabled
+    // ----------------------------------------------------------------------------------------
+    // std::vector<double> getTotalEnergyVec(Domain d);
+
     void sample();
     void resetDevice();
     double getPkgMaxPower();

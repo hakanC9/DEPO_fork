@@ -165,7 +165,7 @@ void Eco::checkIdlePowerConsumption() {
     }
     std::cout << FLUSH_AND_RETURN;
     // TODO: assign structure object, not each element separately
-    double totalTimeInSeconds = devStateGlobal_.getTotalTime();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
 
     idleAvPow_[Domain::PKG] = devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds;
     idleAvPow_[Domain::PP0] = devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds;
@@ -278,15 +278,27 @@ void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b) {
 }
 
 void Eco::reportResult(double waitTime, double testTime) {
-    auto&& energyVec = devStateGlobal_.getTotalEnergyVec(Domain::PKG);
     auto&& totalE = devStateGlobal_.getEnergySinceReset(Domain::PKG);
-    auto&& totalTime = devStateGlobal_.getTotalTime();
+    auto&& totalTime = devStateGlobal_.getTimeSinceReset();
     std::cout << "Total E: " << totalE;
-    int pkgID = 0;
-    for (auto&& pkgE : energyVec) {
-        pkgID++;
-        std::cout << "\nPKG" << pkgID << ": " << pkgE << ", (" << (pkgE/totalE)*100 << "%)";
-    }
+    // ----------------------------------------------------------------------------------------
+    // Below code is temporary disabled as it uses method specific to some
+    // class of systems with two Intel CPUs treated as a single device.
+    // Ultimately the Device shall represent single CPU and the energy readings
+    // shall be combined in DeviceStateAccumulator. If a system consist of
+    // multiple CPUs used by the same application it shall be reflected as multiple
+    // Device object instances within DeviceStateAccumulator.
+    //
+    //  || || || || || || || || || || || || || || || || ||
+    //  \/ \/ \/ \/ \/ \/ \/ \/ \/ \/ \/ \/ \/ \/ \/ \/ \/
+    //
+    // auto&& energyVec = devStateGlobal_.getTotalEnergyVec(Domain::PKG);
+    // int pkgID = 0;
+    // for (auto&& pkgE : energyVec) {
+    //     pkgID++;
+    //     std::cout << "\nPKG" << pkgID << ": " << pkgE << ", (" << (pkgE/totalE)*100 << "%)";
+    // }
+    // ----------------------------------------------------------------------------------------
     std::cout << "\nTotal P: " << totalE / totalTime <<
                  "\nTotal t: " << totalTime << "s\n";
     if (waitTime != 0.0 || testTime != 0.0) {
@@ -499,7 +511,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         // return 1;
     }
     reportResult(waitTime, testTime);
-    double totalTimeInSeconds = devStateGlobal_.getTotalTime();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
 
     return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, 
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG),
@@ -516,7 +528,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
 FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
     singleAppRunAndPowerSample(argv);
     reportResult();
-    double totalTimeInSeconds = devStateGlobal_.getTotalTime();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
 
     return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(),
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG),

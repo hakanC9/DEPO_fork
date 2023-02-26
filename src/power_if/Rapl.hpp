@@ -50,10 +50,10 @@ public:
 	RaplState getPreviousEnergyIncrement();
 	double getCurrentTimeIncrement();
 	double getPreviousTimeIncrement();
-	double getTotalTime(TimePoint startTime);
+	double getTotalTime(TimePoint startTime) const;
 private:
     uint64_t energyDelta(uint64_t before, uint64_t after);
-	double timeDelta(TimePoint&, TimePoint&);
+	double timeDelta(const TimePoint&,const TimePoint&) const;
 	RaplState next_, current_, previous_;
 };
 
@@ -98,6 +98,6 @@ public:
 	PowerCrossDomains getAveragePower();
 	PowerCrossDomains getCurrentPower();
 
-	double total_time();
+	double get_total_time() const;
 	double current_time();
 };

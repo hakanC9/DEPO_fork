@@ -63,11 +63,11 @@ double DeviceStateAccumulator::getPkgMaxPower()
     //above may cause problems when vector is empty or when two different CPUs are in one device
 }
 
-double DeviceStateAccumulator::getTotalTime()
+double DeviceStateAccumulator::getTimeSinceReset() const
 {
     std::set<double> timeSet;
     for (auto&& rapl : raplVec_) {
-        timeSet.insert(rapl.total_time());
+        timeSet.insert(rapl.get_total_time());
     }
     return *timeSet.rbegin(); // set is sorted containter
 }
@@ -81,11 +81,14 @@ double DeviceStateAccumulator::getEnergySinceReset(Domain d) const
     return result;
 }
 
-std::vector<double> DeviceStateAccumulator::getTotalEnergyVec(Domain d)
-{
-    std::vector<double> result;
-    for (auto&& rapl : raplVec_) {
-        result.push_back(rapl.getTotalEnergy()[d]);
-    }
-    return result;
-}
+// Temporary disabled
+// ----------------------------------------------------------------------------------------
+// std::vector<double> DeviceStateAccumulator::getTotalEnergyVec(Domain d)
+// {
+//     std::vector<double> result;
+//     for (auto&& rapl : raplVec_) {
+//         result.push_back(rapl.getTotalEnergy()[d]);
+//     }
+//     return result;
+// }
+// ----------------------------------------------------------------------------------------
