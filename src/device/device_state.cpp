@@ -19,6 +19,7 @@
 #include <set>
 
 DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<Device> d) :
+    absoluteStartTime_(std::chrono::high_resolution_clock::now()),
     device_(d)
 {
     for (auto&& cpuCore : device_->pkgToFirstCoreMap_)

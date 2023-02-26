@@ -116,7 +116,6 @@ class Eco : public EcoApi
 
     WatchdogStatus defaultWatchdog;
     std::ofstream outPowerFile;
-    std::chrono::high_resolution_clock::time_point startTime_;
 
     void storeDataPointToFilters(double);
     double getFilteredPower();

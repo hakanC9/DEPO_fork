@@ -19,6 +19,8 @@
 #include "Device.hpp"
 #include "../power_if/Rapl.hpp"
 
+using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
+
 class DeviceStateAccumulator {
 public:
     DeviceStateAccumulator(std::shared_ptr<Device>);
@@ -38,6 +40,19 @@ public:
     */
     double getTimeSinceReset() const;
 
+    /*
+      getTimeSinceObjectCreation - used only for logging purposes.
+
+      returns the absolute time since the creation of the device state accumulator. Needed
+      for logging data used for power log creation.
+    */
+    template <class Resolution = std::chrono::milliseconds>
+    double getTimeSinceObjectCreation() const
+    {
+        return std::chrono::duration_cast<Resolution>(
+                    std::chrono::high_resolution_clock::now()  - absoluteStartTime_).count();
+    }
+
     // Temporary disabled
     // ----------------------------------------------------------------------------------------
     // std::vector<double> getTotalEnergyVec(Domain d);
@@ -48,6 +63,7 @@ public:
     double getPerfCounterSinceReset();
 
 private:
+    TimePoint absoluteStartTime_;
     std::shared_ptr<Device> device_;
     std::vector<Rapl> raplVec_;
 };

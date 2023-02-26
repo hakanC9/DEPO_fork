@@ -31,7 +31,6 @@ Eco::Eco(std::shared_ptr<Device> d) :
     filter2order_(100), device_(d), devStateGlobal_(d), devStateLocal_(d)
 {
 
-    startTime_ = std::chrono::system_clock::now();
     // include in DirBulder
     auto dir = generateUniqueResultDir();
     outResultFileName_ = dir + "/result.csv";
@@ -67,9 +66,9 @@ Eco::~Eco() {
 
 
 std::string Eco::generateUniqueResultDir() {
-    std::stringstream ss;
-    ss << "cpu_experiment_" << std::chrono::system_clock::to_time_t(startTime_);
-    std::string dir = ss.str();
+    std::string dir = "cpu_experiment_" + std::to_string(
+            std::chrono::system_clock::to_time_t(
+                  std::chrono::high_resolution_clock::now()));
 
     const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if (-1 == dir_err) {
@@ -138,9 +137,7 @@ void Eco::raplSample() {
     optimizationTrigger_ = filter2order_.getCleanedRelativeError() < 0.03;
     if (outPowerFile.is_open()) {
         outPowerFile << std::fixed << std::setprecision(4)
-                     << std::chrono::duration_cast<MS>(
-                        std::chrono::high_resolution_clock::now() - startTime_).count()
-                    //   << std::chrono::system_clock::to_time_t(std::chrono::high_resolution_clock::now())
+                     << devStateGlobal_.getTimeSinceObjectCreation<MS>()
                      << "\t" << device_->getPowerLimitInWatts() << "\t"
                      << currPower << "\t"
                      << currSMA << "\t"
@@ -150,7 +147,7 @@ void Eco::raplSample() {
                      << devStateGlobal_.getCurrentPower(Domain::PP1) << "\t"
                      << devStateGlobal_.getCurrentPower(Domain::DRAM) << "\t"
                      << devStateGlobal_.getCurrentPower(Domain::PP1) << "\t"
-                     << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     << std::chrono::duration_cast<MS>(
                          std::chrono::high_resolution_clock::now().time_since_epoch()).count()
                      << std::endl;
     }
@@ -513,7 +510,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
     reportResult(waitTime, testTime);
     double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
 
-    return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(), 
+    return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(),
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG),
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds,
                                 devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
