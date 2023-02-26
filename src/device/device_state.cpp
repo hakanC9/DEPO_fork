@@ -57,12 +57,6 @@ double DeviceStateAccumulator::getPerfCounterSinceReset()
     return device_->getNumInstructionsSinceReset();
 }
 
-double DeviceStateAccumulator::getPkgMaxPower()
-{
-    return raplVec_.front().pkg_max_power() * raplVec_.size();
-    //above may cause problems when vector is empty or when two different CPUs are in one device
-}
-
 double DeviceStateAccumulator::getTimeSinceReset() const
 {
     std::set<double> timeSet;

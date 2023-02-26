@@ -44,7 +44,6 @@ public:
 
     void sample();
     void resetDevice();
-    double getPkgMaxPower();
     double getCurrentPower(Domain d);
     double getPerfCounterSinceReset();
 

@@ -76,6 +76,16 @@ Device::Device() {
 
 int Device::getDeviceMaxPowerInWatts() const
 {
+    // This method assumes that the max power in Intel CPUs is identical to a default
+    // power cap, which is generally true but the proper information about the max
+    // device power might be read from RAPL::pkg_max_power() method.
+    //
+    // For the purpose of the SPLiT tools collection assuming that the maximal power
+    // is identitical to the default power cap is good enough. On the other hand
+    // max available power is sometimes up to 4x higher than the Thermal Design Power (TDP),
+    // allowing for occasional power consumption spikes so maybe for other type of
+    // research the actual max available power will be more useful. It needs to be noted
+    // that CPU working above TDP would require much more cooling and would throttle much faster.
     return (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000;
 }
 

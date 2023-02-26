@@ -64,6 +64,12 @@ public:
     void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG);
     std::string getName() const;
 
+    /*
+      getDeviceMaxPowerInWatts - used to determine the available power limits range
+
+      returns the maximal available power limit in Watts. For the CPU it assumes that the
+      limit is identical to the default power cap. More details in the method's definition.
+    */
     int getDeviceMaxPowerInWatts() const;
     void restoreDefaults();
     RaplDefaults getDefaultCaps() const;

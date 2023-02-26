@@ -513,7 +513,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
     reportResult(waitTime, testTime);
     double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
 
-    return FinalPowerAndPerfResult(devStateGlobal_.getPkgMaxPower() +1, 
+    return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(), 
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG),
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds,
                                 devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
@@ -555,7 +555,7 @@ FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int
 
 void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
     if (fullAppRunResultsContainer_.size() == 0) {
-        fullAppRunResultsContainer_.emplace_back(devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+        fullAppRunResultsContainer_.emplace_back(device_->getDeviceMaxPowerInWatts(),
                                         ref.energy,
                                         ref.pkgPower,
                                         ref.pp0power,
