@@ -20,7 +20,7 @@
 #include <iostream>
 
 struct PowAndPerfResult {
-    PowAndPerfResult() {}
+    PowAndPerfResult() = default;
     PowAndPerfResult(
         double instructions,
         double timeInSec,

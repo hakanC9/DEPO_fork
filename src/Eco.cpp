@@ -39,7 +39,7 @@ Eco::Eco(std::shared_ptr<Device> d) :
         outPowerFileName_ = dir + "/power_log.csv";
         outPowerFile.open(outPowerFileName_, std::ios::out | std::ios::trunc);
         // below should not be hardcoded but depending on type of series of data
-        outPowerFile << "#time[ms]\tP_cap[W]\tPKG[W]\tSMA50\tSMA100\tSMA200\tPP0[W]\tPP1[W]\tDRAM[W]\n";
+        outPowerFile << "#time[ms]\tP_cap[W]\tPKG[W]\tSMA50\tSMA100\tSMA200\tDRAM[W]\tabsolute time (for sync with another tests)\n";
     }
     defaultWatchdog = readWatchdog();
     if (defaultWatchdog == WatchdogStatus::ENABLED)
@@ -143,10 +143,7 @@ void Eco::raplSample() {
                      << currSMA << "\t"
                      << filter2order_.getSMA() << "\t"
                      << filter2order_.getCleanedRelativeError() << "\t"
-                     << devStateGlobal_.getCurrentPower(Domain::PP0) << "\t"
-                     << devStateGlobal_.getCurrentPower(Domain::PP1) << "\t"
                      << devStateGlobal_.getCurrentPower(Domain::DRAM) << "\t"
-                     << devStateGlobal_.getCurrentPower(Domain::PP1) << "\t"
                      << std::chrono::duration_cast<MS>(
                          std::chrono::high_resolution_clock::now().time_since_epoch()).count()
                      << std::endl;
@@ -674,7 +671,7 @@ void Eco::plotPowerLog() {
     Series currSMA50power (outPowerFileName_, 1, 4, "SMA50 PKG P[W]");
     Series currSMA100power (outPowerFileName_, 1, 5, "filtered PKG P[W]");
     Series currSMA200power (outPowerFileName_, 1, 6, "SMA200 PKG P[W]");
-    Series currDRAMpower (outPowerFileName_, 1, 9, "current DRAM P[W]");
+    Series currDRAMpower (outPowerFileName_, 1, 7, "current DRAM P[W]");
     p.plotPowerLog({powerCap,
                     currPKGpower,
                     currDRAMpower,
