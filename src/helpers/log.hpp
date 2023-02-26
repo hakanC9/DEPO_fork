@@ -26,15 +26,15 @@ std::string logCurrentResultLine(
     bool noNewLine = false)
 {
     std::stringstream sstream;
-    if (curr.pCap < 0.0) {
+    if (curr.appliedPowerCapInWatts_ < 0.0) {
         sstream << "refer.\t";
     } else {
-        sstream << curr.pCap << "\t";
+        sstream << curr.appliedPowerCapInWatts_ << "\t";
     }
     sstream << std::fixed << std::setprecision(2)
-              << curr.energy << "\t"
-              << curr.avP << "\t"
-              << curr.filteredP << "\t"
+              << curr.energyInJoules_ << "\t"
+              << curr.averageCorePowerInWatts_ << "\t"
+              << curr.filteredPowerOfLimitedDomainInWatts_ << "\t"
               << std::setprecision(3)
               << curr.getInstrPerSecond() / first.getInstrPerSecond() << "\t"
               << curr.getEnergyPerInstr() / first.getEnergyPerInstr() << "\t"
@@ -69,11 +69,11 @@ std::string logCurrentGpuResultLine(
     double currRelativeEDP = reference.getEnergyTimeProd() / curr.getEnergyTimeProd();
     sstream << timeInMs
             << std::fixed << std::setprecision(2)
-            << "\t\t" << curr.pCap
-            << "\t\t" << curr.avP
-            << "\t\t" << curr.energy
+            << "\t\t" << curr.appliedPowerCapInWatts_
+            << "\t\t" << curr.averageCorePowerInWatts_
+            << "\t\t" << curr.energyInJoules_
             // << "\t\t" << currKernelsCount
-            << "\t\t" << curr.instr
+            << "\t\t" << curr.instructionsCount_
             << std::fixed << std::setprecision(3)
             << "\t\t" << curr.getInstrPerJoule() * 1000
             << "\t\t" << (std::isinf(currRelativeENG) || std::isnan(currRelativeENG) ? 1.0 : currRelativeENG)

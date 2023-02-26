@@ -261,6 +261,7 @@ PowAndPerfResult GpuDeviceState::getCurrentPowerAndPerf(int deviceID) const
         gpu_->getPowerLimitInWatts(deviceID),
         next_.power_ * timeDeltaMilliSeconds / 1000, // Watts x seconds
         next_.power_,
+        0.0, // memory power - not available for GPU
         next_.power_ // TODO: this should be filtered power
         );
 }
@@ -528,11 +529,11 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
         deviceState_->sample();
         auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
         *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult); // reference result is not relevant yet
-        if (tmpResult.instr > 0)
+        if (tmpResult.instructionsCount_ > 0)
         {
             cyclesWithGpuActivity++;
         }
-        else if (tmpResult.instr == 0)
+        else if (tmpResult.instructionsCount_ == 0)
         {
             cyclesWithGpuActivity = 0;
         }
@@ -584,7 +585,7 @@ int GpuEco::runTunningPhaseLS(
         }
     }
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
-    return currBestResult.pCap;
+    return currBestResult.appliedPowerCapInWatts_;
 }
 
 int GpuEco::runTunningPhaseGSS(

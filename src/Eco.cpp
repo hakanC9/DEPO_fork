@@ -235,7 +235,8 @@ PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
                             timeInSeconds,
                             device_->getPowerLimitInWatts(),
                             energyInJoules,
-                            energyInJoules / timeInSeconds, // Joules / seconds
+                            energyInJoules / timeInSeconds, // Joules / seconds = Watts
+                            0.0, // DRAM power - TBD
                             getFilteredPower());
 }
 
@@ -367,8 +368,8 @@ int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW
         currHighLimit_uW = device_->getDefaultCaps().defaultConstrPKG_->longPower;
     }
     // reduce starting high power limit according to first result's average power
-    if ((firstResult.avP * 1000000) < (currHighLimit_uW/2)) {
-        currHighLimit_uW = (firstResult.avP * 1000000) * 2.0;
+    if ((firstResult.averageCorePowerInWatts_ * 1000000) < (currHighLimit_uW/2)) {
+        currHighLimit_uW = (firstResult.averageCorePowerInWatts_ * 1000000) * 2.0;
     }
     return currHighLimit_uW;
 }
