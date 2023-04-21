@@ -189,7 +189,7 @@ int main (int argc, char *argv[])
             return 1;
         }
         path = path + "/libinjection_2.so";
-        std::cout << "HEHEHEHHE " << path << "|||| \n";
+
         int e2 = setenv("CUDA_INJECTION64_PATH", path.c_str(), 1);
         std::cout << "ENV1 status: " << e1 << ", value: " << getenv("INJECTION_KERNEL_COUNT")
                   << "\nENV2 status: " << e2 << ", value: " << getenv("CUDA_INJECTION64_PATH") << "\n";
