@@ -1,7 +1,3 @@
-#include <unistd.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 /*
    Copyright 2022, Adam Krzywaniak.
 
@@ -18,6 +14,10 @@
    limitations under the License.
 */
 
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <string.h>
 #include <iostream>

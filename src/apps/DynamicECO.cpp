@@ -15,6 +15,7 @@
 */
 
 #include "../Eco.hpp"
+#include "../gpu_eco.hpp"
 
 #include "../helpers/results_container.hpp"
 #include <boost/program_options.hpp>
@@ -67,12 +68,30 @@ parseArgs(po::variables_map& map)
     return std::make_pair(metric, search);
 }
 
+std::optional<int> checkIfDeviceTypeIsGPU(po::variables_map& map)
+{
+    std::optional<int> gpuID = std::nullopt;
+    if (map.count("gpu"))
+    {
+        gpuID = map["gpu"].as<int>();
+        map.erase("gpu");
+        std::cout << "Using GPU with ID=" << gpuID.value() << " backend for NVIDIA optimization.\n";
+    }
+    return gpuID;
+}
+
 void cleanArgv(int& argc, char* argv[])
 {
     for (int idx = 1; idx < argc;)
     {
         const auto flag = std::string(argv[idx]);
-        if (flag == "--ls" || flag == "--gss" || flag == "--en" || flag == "--edp" || flag == "--eds")
+        if (flag == "--ls"  ||
+            flag == "--gss" ||
+            flag == "--en"  ||
+            flag == "--edp" ||
+            flag == "--eds" ||
+            std::string(flag).substr(0,6) == "--gpu="
+            )
         {
             for (int i = 1; i < argc -1; i++)
             {
@@ -81,6 +100,17 @@ void cleanArgv(int& argc, char* argv[])
             argv[argc-1] = nullptr;
             argc--;
         }
+        else if (flag == "--gpu")
+        {
+            // erase two args: the flag and the value
+            for (int i = 1; i < argc -2; i++)
+            {
+                argv[i] = argv[i+2];
+            }
+            argv[argc-1] = nullptr;
+            argv[argc-2] = nullptr;
+            argc-=2;
+        }
         else
         {
             idx++;
@@ -88,8 +118,29 @@ void cleanArgv(int& argc, char* argv[])
     }
 }
 
-int main (int argc, char *argv[]) {
 
+static inline std::string readPathInfo()
+{
+    std::fstream tmpfile;
+    tmpfile.open("/tmp/depo_gpu_path", std::ios::in);
+    if (tmpfile.is_open()) {
+        std::string path;
+        std::stringstream ss;
+        while (getline(tmpfile, path))
+        {
+            ss << path << "\n";
+        }
+        tmpfile.close();
+        std::string tmp = ss.str();
+        tmp.erase(std::remove(tmp.begin(), tmp.end(), '\n'), tmp.cend());
+        return tmp;
+    }
+    return "";
+}
+
+
+int main (int argc, char *argv[])
+{
     // temporary fix
     std::ofstream watchdog ("/proc/sys/kernel/nmi_watchdog", std::ios::out | std::ios::trunc);
 	watchdog << "0";
@@ -105,21 +156,49 @@ int main (int argc, char *argv[]) {
         ("en", "use Energy metric")
         ("edp", "use Energy Delay Product metric")
         ("eds", "use Energy Delay Sum metric")
+        ("gpu", po::value<int>(), "use GPU backend for card with specified ID")
     ;
     po::variables_map optionsMap;
     po::store(po::parse_command_line(argc, argv, desc), optionsMap);
     po::notify(optionsMap);
+
+    // print help and exit
     if (optionsMap.count("help"))
     {
         std::cout << desc << "\n";
         return 1;
     }
+    // read metric and search algorithm
     std::tie(metric, search) = parseArgs(optionsMap);
+    std::optional<int> gpuID = checkIfDeviceTypeIsGPU(optionsMap);
     cleanArgv(argc, argv);
 
-    Eco eco(std::make_shared<Device>());
-    std::ofstream outResultFile (eco.getResultFileName(), std::ios::out | std::ios::trunc);
 
+    std::unique_ptr<EcoApi> eco;
+    if (gpuID.has_value())
+    {
+        eco = std::make_unique<GpuEco>(gpuID.value());
+
+        int e1 = setenv("INJECTION_KERNEL_COUNT", "1", 1);
+        std::string path = readPathInfo();
+
+        if (path == "")
+        {
+            std::cerr << "`/tmp/depo_gpu_path` is empty. You should probably run `./build.sh` in `split/profiling_injection` directory.";
+            std::cerr << "\nClosing DEPO called for GPU backend.\n";
+            return 1;
+        }
+        path = path + "/libinjection_2.so";
+        std::cout << "HEHEHEHHE " << path << "|||| \n";
+        int e2 = setenv("CUDA_INJECTION64_PATH", path.c_str(), 1);
+        std::cout << "ENV1 status: " << e1 << ", value: " << getenv("INJECTION_KERNEL_COUNT")
+                  << "\nENV2 status: " << e2 << ", value: " << getenv("CUDA_INJECTION64_PATH") << "\n";
+    }
+    else
+    {
+        eco = std::make_unique<Eco>(std::make_shared<Device>());
+    }
+    std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
     BothStream bout(outResultFile);
     bout << "# ";
     for (int i=1; i<argc; i++) {
@@ -128,14 +207,20 @@ int main (int argc, char *argv[]) {
     bout << "\n";
 
     FinalPowerAndPerfResult result;
-    result = eco.runAppWithSearch(argv, metric, search);
+    result = eco->runAppWithSearch(argv, metric, search, argc);
     std::cout << "\n"
               << "E: " << result.energy << " J\n"
               << "t: " << result.time_.totalTime_ << " s\n"
               << "P: " << result.pkgPower << " W\n";
 
     outResultFile.close();
-    eco.plotPowerLog();
+    eco->plotPowerLog();
+
+    if (gpuID.has_value())
+    {
+        unsetenv("INJECTION_KERNEL_COUNT");
+        unsetenv("CUDA_INJECTION64_PATH");
+    }
 
 	return 0;
 }

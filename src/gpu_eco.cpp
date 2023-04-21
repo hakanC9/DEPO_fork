@@ -225,27 +225,17 @@ GpuDeviceState& GpuDeviceState::sample()
     prev_ = curr_;
     curr_ = next_;
 
-    // -----------------------------------------------
-    // Below shall be enabled when DEPO upgrade
-    // for GPU is merged
-    // -----------------------------------------------
-    // long long int kernelsCountTmp {-1};
-    // do
-    // {
-    //     kernelsCountTmp = readValueFromFile("./kernels_count");
-    // }
-    // while (kernelsCountTmp == -1);
+    long long int kernelsCountTmp {-1};
+    do
+    {
+        kernelsCountTmp = readValueFromFile("./kernels_count");
+    }
+    while (kernelsCountTmp == -1);
 
-    // next_ = NvidiaState(
-    //     gpu_->getCurrentPowerInWattsForDeviceID(),
-    //     (unsigned long long)kernelsCountTmp,
-    //     std::chrono::high_resolution_clock::now());
-    // -----------------------------------------------
     next_ = NvidiaState(
         gpu_->getCurrentPowerInWattsForDeviceID(),
-        0, // kernels count for future use
+        (unsigned long long)kernelsCountTmp,
         std::chrono::high_resolution_clock::now());
-    // -----------------------------------------------
 
     auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
     totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
@@ -443,7 +433,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
         command += " ";
     }
     deviceState_->resetState();
-    int status = 1;
+
     double waitTime = 0.0, testTime = 0.0;
     int bestResultCap = 300;
     pid_t childProcId = fork();
@@ -459,6 +449,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
         }
         else
         {
+            int status = 1;
             waitpid(childProcId, &status, WNOHANG);
             waitTime = measureDuration([&, this] {
                 waitForGpuComputeActivity(status, cfg_.msPause_);

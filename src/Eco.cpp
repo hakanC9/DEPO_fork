@@ -469,17 +469,24 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
     SearchType searchType,
     int argc)
 {
-    devStateGlobal_.resetDevice();
 
+    // this is redirecting the original output of the tuned application to txt file
     int fd = open("redirected.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
     if (fd < 0) { perror("open"); abort(); }
+    // ----------------------------------------------------------------------------
+
+    devStateGlobal_.resetDevice();
+
     double waitTime = 0.0, testTime = 0.0;
     pid_t childProcId = fork();
-    if (childProcId >= 0) { //fork successful
-        if (childProcId == 0) { // child process
+    if (childProcId >= 0) //fork successful
+    {
+        if (childProcId == 0) // child process
+        {
             mainAppProcess(argv, fd);
         }
-        else {              // parent process
+        else  // parent process
+        {
             int lowPowLimit_uW = (int)(idleAvPow_[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
             int highPowLimit_uW = device_->getDeviceMaxPowerInWatts() * 1000000;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
             int status = 1;
@@ -500,7 +507,9 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
             execPhase(bestCap, status, childProcId, firstResult);
             device_->restoreDefaults();
         }
-    } else {
+    }
+    else
+    {
         std::cerr << "fork failed" << std::endl;
         // TODO: handle errors
         // return 1;

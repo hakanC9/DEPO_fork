@@ -74,9 +74,15 @@ class Eco : public EcoApi
   public:
     void idleSample(int idleTimeS) override;
     FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1) override;
-    FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int = 1) override;
+    FinalPowerAndPerfResult runAppWithSearch(
+      char* const*,
+      TargetMetric,
+      SearchType,
+      int = 1) override;
     void plotPowerLog() override;
     std::string getDeviceName() const override { return device_->getName(); }
+
+    void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
     void referenceRunWithoutCaps(char* const*);
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
@@ -85,7 +91,6 @@ class Eco : public EcoApi
     FinalPowerAndPerfResult runAppWithGoldenSectionSearch(char* const*,
                                                           TargetMetric = TargetMetric::MIN_E);
     void storeReferenceRun(FinalPowerAndPerfResult&);
-    void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
     Eco(std::shared_ptr<Device>);
     virtual ~Eco();
