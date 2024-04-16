@@ -79,13 +79,10 @@ make
 ```
 
 # Known dependencies
-
-Dependency added on Jan 2020:
 ```
+sudo apt-get update && sudo apt-get install build-essential cmake gnuplot
 sudo apt-get install libboost-all-dev
 ```
-
-Since Feb 2020 project uses cmake >= v 3.10.
 
 # Exemplary usage
 
