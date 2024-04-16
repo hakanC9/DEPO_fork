@@ -92,7 +92,7 @@ class Eco : public EcoApi
                                                           TargetMetric = TargetMetric::MIN_E);
     void storeReferenceRun(FinalPowerAndPerfResult&);
 
-    Eco(std::shared_ptr<Device>);
+    Eco(std::shared_ptr<IntelDevice>);
     virtual ~Eco();
 
   protected:

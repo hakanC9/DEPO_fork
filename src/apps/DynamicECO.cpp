@@ -197,7 +197,7 @@ int main (int argc, char *argv[])
     }
     else
     {
-        eco = std::make_unique<Eco>(std::make_shared<Device>());
+        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>());
     }
     std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
     BothStream bout(outResultFile);

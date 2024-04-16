@@ -27,7 +27,7 @@
 
 static constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
-Eco::Eco(std::shared_ptr<Device> d) :
+Eco::Eco(std::shared_ptr<IntelDevice> d) :
     filter2order_(100), device_(d), devStateGlobal_(d), devStateLocal_(d)
 {
 
@@ -590,69 +590,69 @@ void Eco::referenceRunWithoutCaps(char* const* argv) {
 
 void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain dom) {
     // This is legacy method which requires prior referenceRunWithoutCaps() method call.
-    // This method wes used when there was a need for static
+    // This method was used when there was a need for static
     // evaluation of different power caps for a given power domain.
     // In recent Intel based CPUs there is no PP0 and PP1 domains so that
     // it is really only a matter if one want to limit PKG domain or DRAM.
     // The method will be probably removed soon.
     // For now the tool supports only PKG domain and static energy profiling is covered
     // end-to-end by staticEnergyProfiler() method of ECO class.
-    if (device_->isDomainAvailable(dom))
-    {
-        stream << "#[INFO] Running tests for domain " << dom << ".\n";
-        const auto ref = fullAppRunResultsContainer_.front(); //TODO: remove the dependency on reference run
-        stream << std::fixed << std::setprecision(3) << ref << "\n";
-        auto powerLimitsVec = generateVecOfPowerCaps(dom);
-        auto loopsToDo = powerLimitsVec.size();
-        for (auto& currentLimit : powerLimitsVec) {
-            std::cout << loopsToDo-- << " ";
-            device_->setPowerLimitInMicroWatts(currentLimit, dom);
-            auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
-            auto k = getK();
-            auto mPlus = EnergyTimeResult(avResult.energy,
-                                          avResult.time_.totalTime_,
-                                          avResult.pkgPower).checkPlusMetric(ref.getEnergyAndTime(), k);
-            auto mPlusDynamic = (1.0/k) * (ref.getInstrPerSec() / avResult.getInstrPerSec()) *
-                                ((k-1.0) * (avResult.getEnergyPerInstr() / ref.getEnergyPerInstr()) + 1.0);
-            auto&& timeDelta = avResult.time_.totalTime_ - ref.time_.totalTime_;
-            fullAppRunResultsContainer_.emplace_back((double)currentLimit / 1000000,
-                                            avResult.energy,
-                                            avResult.pkgPower,
-                                            avResult.pp0power,
-                                            avResult.pp1power,
-                                            avResult.dramPower,
-                                            avResult.time_.totalTime_,
-                                            avResult.inst,
-                                            avResult.cycl,
-                                            avResult.energy - ref.energy,
-                                            timeDelta,
-                                            100 * (avResult.energy - ref.energy) / ref.energy,
-                                            100 * (timeDelta) / ref.time_.totalTime_,
-                                            mPlus);
-            stream << fullAppRunResultsContainer_.back() << "\t" << mPlusDynamic << "\n";
-            if (fullAppRunResultsContainer_.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
-                break;
-            }
-        }
-        device_->restoreDefaults();
-        stream << "# PowerCap for: min(E): "
-               << std::min_element(fullAppRunResultsContainer_.begin(),
-                                   fullAppRunResultsContainer_.end(),
-                                   CompareFinalResultsForMinE())->powercap
-               << " W, "
-               << "min(Et): "
-               << std::min_element(fullAppRunResultsContainer_.begin(),
-                                   fullAppRunResultsContainer_.end(),
-                                   CompareFinalResultsForMinEt())->powercap
-               << " W, "
-               << "min(M+): "
-               << std::min_element(fullAppRunResultsContainer_.begin(),
-                                   fullAppRunResultsContainer_.end(),
-                                   CompareFinalResultsForMplus())->powercap
-               << " W.\n";
-    } else {
-        stream << "[INFO] Domain " << dom << " is not supproted.\n";
-    }
+    // if (device_->isDomainAvailable(dom))
+    // {
+    //     stream << "#[INFO] Running tests for domain " << dom << ".\n";
+    //     const auto ref = fullAppRunResultsContainer_.front(); //TODO: remove the dependency on reference run
+    //     stream << std::fixed << std::setprecision(3) << ref << "\n";
+    //     auto powerLimitsVec = generateVecOfPowerCaps(dom);
+    //     auto loopsToDo = powerLimitsVec.size();
+    //     for (auto& currentLimit : powerLimitsVec) {
+    //         std::cout << loopsToDo-- << " ";
+    //         device_->setPowerLimitInMicroWatts(currentLimit, dom);
+    //         auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
+    //         auto k = getK();
+    //         auto mPlus = EnergyTimeResult(avResult.energy,
+    //                                       avResult.time_.totalTime_,
+    //                                       avResult.pkgPower).checkPlusMetric(ref.getEnergyAndTime(), k);
+    //         auto mPlusDynamic = (1.0/k) * (ref.getInstrPerSec() / avResult.getInstrPerSec()) *
+    //                             ((k-1.0) * (avResult.getEnergyPerInstr() / ref.getEnergyPerInstr()) + 1.0);
+    //         auto&& timeDelta = avResult.time_.totalTime_ - ref.time_.totalTime_;
+    //         fullAppRunResultsContainer_.emplace_back((double)currentLimit / 1000000,
+    //                                         avResult.energy,
+    //                                         avResult.pkgPower,
+    //                                         avResult.pp0power,
+    //                                         avResult.pp1power,
+    //                                         avResult.dramPower,
+    //                                         avResult.time_.totalTime_,
+    //                                         avResult.inst,
+    //                                         avResult.cycl,
+    //                                         avResult.energy - ref.energy,
+    //                                         timeDelta,
+    //                                         100 * (avResult.energy - ref.energy) / ref.energy,
+    //                                         100 * (timeDelta) / ref.time_.totalTime_,
+    //                                         mPlus);
+    //         stream << fullAppRunResultsContainer_.back() << "\t" << mPlusDynamic << "\n";
+    //         if (fullAppRunResultsContainer_.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
+    //             break;
+    //         }
+    //     }
+    //     device_->restoreDefaults();
+    //     stream << "# PowerCap for: min(E): "
+    //            << std::min_element(fullAppRunResultsContainer_.begin(),
+    //                                fullAppRunResultsContainer_.end(),
+    //                                CompareFinalResultsForMinE())->powercap
+    //            << " W, "
+    //            << "min(Et): "
+    //            << std::min_element(fullAppRunResultsContainer_.begin(),
+    //                                fullAppRunResultsContainer_.end(),
+    //                                CompareFinalResultsForMinEt())->powercap
+    //            << " W, "
+    //            << "min(M+): "
+    //            << std::min_element(fullAppRunResultsContainer_.begin(),
+    //                                fullAppRunResultsContainer_.end(),
+    //                                CompareFinalResultsForMplus())->powercap
+    //            << " W.\n";
+    // } else {
+    //     stream << "[INFO] Domain " << dom << " is not supproted.\n";
+    // }
 }
 
 WatchdogStatus Eco::readWatchdog() {

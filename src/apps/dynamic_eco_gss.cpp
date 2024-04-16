@@ -74,7 +74,7 @@ int main (int argc, char *argv[]) {
 	watchdog.close();
 
 
-    Eco eco(std::make_shared<Device>());
+    Eco eco(std::make_shared<IntelDevice>());
     std::ofstream outResultFile (eco.getResultFileName(), std::ios::out | std::ios::trunc);
 
     BothStream bout(outResultFile);

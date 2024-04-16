@@ -35,6 +35,7 @@ static inline int readLimitFromFile (std::string fileName) {
             limit = atoi(line.c_str());
         }
         limitFile.close();
+        std::cout << "limit " << limit << std::endl;
     } else {
         std::cerr << "cannot read the limit file: " << fileName << "\n"
                   << "file not open\n";
@@ -64,17 +65,18 @@ AvailablePowerDomains::AvailablePowerDomains (bool p0, bool p1, bool d, bool ps,
 	if (dram_) availableDomainsSet_.insert(PowerCapDomain::DRAM);
 }
 
-Device::Device() {
+IntelDevice::IntelDevice()
+{
+    std::cout << "INFO: Device constructor called!\n";
     detectCPU();
     detectPackages();
     detectPowerCapsAvailability();
 	prepareRaplDirsFromAvailableDomains();
 	readAndStoreDefaultLimits();
 	initPerformanceCounters();
-	std::cout << "INFO: Device constructor called!\n";
 }
 
-int Device::getDeviceMaxPowerInWatts() const
+int IntelDevice::getDeviceMaxPowerInWatts() const
 {
     // This method assumes that the max power in Intel CPUs is identical to a default
     // power cap, which is generally true but the proper information about the max
@@ -89,16 +91,16 @@ int Device::getDeviceMaxPowerInWatts() const
     return (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000;
 }
 
-std::string Device::getName() const
+std::string IntelDevice::getName() const
 {
     return mapCpuFamilyName(model_);
 }
 
-AvailablePowerDomains Device::getAvailablePowerDomains() {
+AvailablePowerDomains IntelDevice::getAvailablePowerDomains() {
     return devicePowerProfile_;
 }
 
-void Device::detectCPU() {
+void IntelDevice::detectCPU() {
 
 	FILE *fff;
 
@@ -150,7 +152,7 @@ void Device::detectCPU() {
 	}
 }
 
-void Device::detectPackages() {
+void IntelDevice::detectPackages() {
 
 	FILE *fff;
 	int package;
@@ -179,7 +181,7 @@ void Device::detectPackages() {
 	printf("\tDetected %d cores in %d packages\n\n", totalCores_, totalPackages_);
 }
 
-std::string Device::mapCpuFamilyName(int model) const
+std::string IntelDevice::mapCpuFamilyName(int model) const
 {
 	switch(model)
     {
@@ -230,7 +232,7 @@ std::string Device::mapCpuFamilyName(int model) const
 	}
 }
 
-void Device::detectPowerCapsAvailability() {
+void IntelDevice::detectPowerCapsAvailability() {
 	if (model_ < 0)
     {
 		printf("\tUnsupported CPU model %d\n", model_);
@@ -281,7 +283,7 @@ void Device::detectPowerCapsAvailability() {
 	}
 }
 
-void Device::prepareRaplDirsFromAvailableDomains()
+void IntelDevice::prepareRaplDirsFromAvailableDomains()
 {
     // TODO: rework below loop and verify correctness for KNL and KNM
     for (unsigned i = 0; i < totalPackages_; i++) {
@@ -306,48 +308,49 @@ void Device::prepareRaplDirsFromAvailableDomains()
     }
 }
 
-bool Device::isDomainAvailable(Domain dom)
+bool IntelDevice::isDomainAvailable(Domain dom)
 {
 	return devicePowerProfile_.availableDomainsSet_.find(dom) != devicePowerProfile_.availableDomainsSet_.end();
 }
 
-void Device::readAndStoreDefaultLimits() {
+void IntelDevice::readAndStoreDefaultLimits()
+{
     auto fileExists = boost::filesystem::exists(defaultLimitsFile_);
     std::ofstream fs;
     if(!fileExists) {
         fs.open(defaultLimitsFile_, std::ios::out | std::ios::trunc);
     }
-    raplDefaultCaps_.defaultConstrPKG_ = ConstraintsSP (new Constraints(
+    raplDefaultCaps_.defaultConstrPKG_ = std::make_shared<Constraints>(
 		                                              readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.pl0dir_),
                                                       readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.pl1dir_),
                                                       readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.window0dir_),
-                                                      readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.window1dir_)));
+                                                      readLimitFromFile(raplDirs_.packagesDirs_[0] + raplDirs_.window1dir_));
     if (!fileExists) {
         fs << "PKG\n" << *raplDefaultCaps_.defaultConstrPKG_;
     }
     if (devicePowerProfile_.pp0_) {
-        raplDefaultCaps_.defaultConstrPP0_ = SubdomainInfoSP (new SubdomainInfo(
+        raplDefaultCaps_.defaultConstrPP0_ = std::make_shared<SubdomainInfo>(
 			                                                  readLimitFromFile(raplDirs_.pp0Dirs_[0] + raplDirs_.pl0dir_),
                                                               readLimitFromFile(raplDirs_.pp0Dirs_[0] + raplDirs_.window0dir_),
-                                                              readLimitFromFile(raplDirs_.pp0Dirs_[0] + raplDirs_.isEnabledDir_)));
+                                                              readLimitFromFile(raplDirs_.pp0Dirs_[0] + raplDirs_.isEnabledDir_));
         if (!fileExists) {
             fs << "PP0\n" << *raplDefaultCaps_.defaultConstrPP0_;
         }
     }
     if (devicePowerProfile_.pp1_) {
-        raplDefaultCaps_.defaultConstrPP1_ = SubdomainInfoSP (new SubdomainInfo(
+        raplDefaultCaps_.defaultConstrPP1_ = std::make_shared<SubdomainInfo>(
 			                                                  readLimitFromFile(raplDirs_.pp1Dirs_[0] + raplDirs_.pl0dir_),
                                                               readLimitFromFile(raplDirs_.pp1Dirs_[0] + raplDirs_.window0dir_),
-                                                              readLimitFromFile(raplDirs_.pp1Dirs_[0] + raplDirs_.isEnabledDir_)));
+                                                              readLimitFromFile(raplDirs_.pp1Dirs_[0] + raplDirs_.isEnabledDir_));
         if (!fileExists) {
             fs << "PP1\n" << *raplDefaultCaps_.defaultConstrPP1_;
         }
     }
     if (devicePowerProfile_.dram_) {
-        raplDefaultCaps_.defaultConstrDRAM_ = SubdomainInfoSP (new SubdomainInfo(
+        raplDefaultCaps_.defaultConstrDRAM_ = std::make_shared<SubdomainInfo>(
 			                                                   readLimitFromFile(raplDirs_.dramDirs_[0] + raplDirs_.pl0dir_),
                                                                readLimitFromFile(raplDirs_.dramDirs_[0] + raplDirs_.window0dir_),
-                                                               readLimitFromFile(raplDirs_.dramDirs_[0] + raplDirs_.isEnabledDir_)));
+                                                               readLimitFromFile(raplDirs_.dramDirs_[0] + raplDirs_.isEnabledDir_));
         if (!fileExists) {
             fs << "DRAM\n" << *raplDefaultCaps_.defaultConstrDRAM_;
         }
@@ -357,7 +360,8 @@ void Device::readAndStoreDefaultLimits() {
     }
 }
 
-void Device::restoreDefaults () {
+void IntelDevice::restoreDefaults ()
+{
     currentPowerLimitInWatts_ = DEFAULT_LIMIT;
     //assume that both PKGs has the same limits
     for (auto& currentPkgDir : raplDirs_.packagesDirs_) {
@@ -383,12 +387,13 @@ void Device::restoreDefaults () {
     }
 }
 
-double Device::getPowerLimitInWatts() const
+double IntelDevice::getPowerLimitInWatts() const
 {
 	return currentPowerLimitInWatts_;
 }
 
-void Device::setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain dom) {
+void IntelDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain dom)
+{
     auto&& numPkgs = totalPackages_; // packagesDirs_.size();
     auto singlePKGcap = limitInMicroW / numPkgs;
     switch (dom) {
@@ -425,18 +430,18 @@ void Device::setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain dom) 
     }
 }
 
-void Device::setLongTimeWindow(int longTimeWindow) {
+void IntelDevice::setLongTimeWindow(int longTimeWindow) {
     for (auto& curentPkgDir : raplDirs_.packagesDirs_) {
         writeLimitToFile (curentPkgDir + raplDirs_.window0dir_, longTimeWindow);
     }
 }
 
-RaplDefaults Device::getDefaultCaps() const
+RaplDefaults IntelDevice::getDefaultCaps() const
 {
 	return raplDefaultCaps_;
 }
 
-void Device::initPerformanceCounters()
+void IntelDevice::initPerformanceCounters()
 {
     pcm_ = pcm::PCM::getInstance();
     std::cerr << "\n Resetting PMU configuration" << std::endl;
@@ -448,12 +453,12 @@ void Device::initPerformanceCounters()
     }
 }
 
-void Device::resetPerfCounters()
+void IntelDevice::resetPerfCounters()
 {
     pcm_->getAllCounterStates(sysBeforeState_, dummySocketStates_, beforeState_);
 }
 
-double Device::getNumInstructionsSinceReset()
+double IntelDevice::getNumInstructionsSinceReset()
 {
     pcm_->getAllCounterStates(sysAfterState_, dummySocketStates_, afterState_);
 	return (double)getInstructionsRetired(sysBeforeState_, sysAfterState_)/1000000;

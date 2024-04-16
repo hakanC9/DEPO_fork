@@ -23,7 +23,7 @@ using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
 class DeviceStateAccumulator {
 public:
-    DeviceStateAccumulator(std::shared_ptr<Device>);
+    DeviceStateAccumulator(std::shared_ptr<IntelDevice>);
     ~DeviceStateAccumulator() {}
 
     /*
@@ -64,6 +64,6 @@ public:
 
 private:
     TimePoint absoluteStartTime_;
-    std::shared_ptr<Device> device_;
+    std::shared_ptr<IntelDevice> device_;
     std::vector<Rapl> raplVec_;
 };

@@ -4,6 +4,7 @@ pcm/libPCM.a
 *.csv
 *.png
 *.x
+*.a
 cpu_params.txt
 redirected.txt
 .vscode/*

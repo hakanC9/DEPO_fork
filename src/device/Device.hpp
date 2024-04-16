@@ -26,7 +26,7 @@
 struct AvailablePowerDomains {
     AvailablePowerDomains() {}
     AvailablePowerDomains(bool, bool, bool, bool, bool);
-    ~AvailablePowerDomains() {}
+    virtual ~AvailablePowerDomains() = default;
 
     bool pp0_{false}, pp1_{false}, dram_{false}, psys_{false}, fixedDramUnits_{false};
     std::set<PowerCapDomain> availableDomainsSet_;
@@ -57,12 +57,28 @@ struct RaplDefaults
 class Device
 {
 public:
-    Device();
-    ~Device() {}
+    Device() {}
+    virtual ~Device() = default;
+    virtual std::string getName() const = 0;
+    virtual void restoreDefaults() = 0;
+    virtual int getDeviceMaxPowerInWatts() const = 0;
+    virtual double getPowerLimitInWatts() const = 0;
+    virtual void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG) = 0;
+    virtual RaplDefaults getDefaultCaps() const = 0; // TODO: remove dependency on RAPL
 
-    double getPowerLimitInWatts() const;
-    void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG);
-    std::string getName() const;
+private:
+};
+
+
+class IntelDevice : public Device
+{
+public:
+    IntelDevice();
+    virtual ~IntelDevice() = default;
+
+    double getPowerLimitInWatts() const override;
+    void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG) override;
+    std::string getName() const override;
 
     /*
       getDeviceMaxPowerInWatts - used to determine the available power limits range
@@ -70,14 +86,14 @@ public:
       returns the maximal available power limit in Watts. For the CPU it assumes that the
       limit is identical to the default power cap. More details in the method's definition.
     */
-    int getDeviceMaxPowerInWatts() const;
-    void restoreDefaults();
-    RaplDefaults getDefaultCaps() const;
+    int getDeviceMaxPowerInWatts() const override;
+    void restoreDefaults() override;
+    RaplDefaults getDefaultCaps() const override;
     AvailablePowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
     void resetPerfCounters();
     double getNumInstructionsSinceReset();
-    std::vector<int> pkgToFirstCoreMap_; // TODO getter for this, preferably delete
+    std::vector<int> getPkgToFirstCoreMap() const { return pkgToFirstCoreMap_; }
 
 private:
     void detectCPU();
@@ -102,4 +118,6 @@ private:
     pcm::SystemCounterState sysBeforeState_, sysAfterState_;
     std::vector<pcm::CoreCounterState> beforeState_, afterState_;
     std::vector<pcm::SocketCounterState> dummySocketStates_;
+    std::vector<int> pkgToFirstCoreMap_;
+
 };

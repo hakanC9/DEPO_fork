@@ -166,3 +166,9 @@ If you find this code usefull please cite any of our papers which contributed to
         year = {2023},
         }
 
+
+
+https://developer.nvidia.com/cuda-downloads
+
+
+DEPO GPU [requires CUDA compute capabilities 7.0 or higher](https://docs.nvidia.com/cupti/main/main.html#cupti-profiling-api), what means that architectures older than Volta (e.g., Pascal) are not supported.

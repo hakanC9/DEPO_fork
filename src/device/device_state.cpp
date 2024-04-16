@@ -18,11 +18,11 @@
 
 #include <set>
 
-DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<Device> d) :
+DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<IntelDevice> d) :
     absoluteStartTime_(std::chrono::high_resolution_clock::now()),
     device_(d)
 {
-    for (auto&& cpuCore : device_->pkgToFirstCoreMap_)
+    for (auto&& cpuCore : device_->getPkgToFirstCoreMap())
     {
         raplVec_.emplace_back(cpuCore, device_->getAvailablePowerDomains());
         std::cout << "INFO: created RAPL object for core " << cpuCore << " in DeviceStateAccumulator.\n";
