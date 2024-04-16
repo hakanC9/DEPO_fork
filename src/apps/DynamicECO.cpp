@@ -19,6 +19,7 @@
 
 #include "../helpers/results_container.hpp"
 #include <boost/program_options.hpp>
+#include <optional>
 
 namespace po = boost::program_options;
 
