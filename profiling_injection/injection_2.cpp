@@ -1,17 +1,11 @@
-// Copyright 2021 NVIDIA Corporation. All rights reserved
+// Copyright 2021-2022 NVIDIA Corporation. All rights reserved
 //
 // This sample demostrates using the profiler API in injection mode.
-// Build this file as a shared object, and point environment variable
-// LD_PRELOAD to the full path to the .so.
+// Build this file as a shared object, and set environment variable
+// CUDA_INJECTION64_PATH to the full path to the .so.
 //
-// This works by intercepting dlsym, so as long as any call in the
-// target application uses dlsym internally, this should work.  Several
-// CUDA runtime calls use dlsym, as well as other standard libraries, so
-// this is a reasonable assumption.
-//
-// The intercepted dlsym is only used to call a one-time initialization
-// routine which will register CUPTI Callback API functions, but otherwise
-// calls into the libc dlsym() function as normal.
+// CUDA will load the object during initialization and will run
+// the function called 'InitializeInjection'.
 //
 // After the initialization routine  returns, the application resumes running,
 // with the registered callbacks triggering as expected.  These callbacks
@@ -28,25 +22,7 @@
 // This code supports multiple contexts and multithreading through
 // locking shared data structures.
 
-#include "cuda.h"
-#include "cuda_runtime_api.h"
-#include "cupti_callbacks.h"
-#include "cupti_profiler_target.h"
-#include "cupti_driver_cbid.h"
-#include "cupti_target.h"
-#include "cupti_activity.h"
-#include "nvperf_host.h"
-
-#include <Eval.h>
-using ::NV::Metric::Eval::PrintMetricValues;
-
-#include <Metric.h>
-using ::NV::Metric::Config::GetConfigImage;
-using ::NV::Metric::Config::GetCounterDataPrefixImage;
-
-#include <Utils.h>
-using ::NV::Metric::Utils::GetNVPWResultString;
-
+// System headers
 #include <iostream>
 using ::std::cerr;
 using ::std::cout;
@@ -69,16 +45,33 @@ using ::std::vector;
 
 #include <stdlib.h>
 
-#include <fstream>
+// CUDA headers
+#include <cuda.h>
+#include <cuda_runtime_api.h>
 
-#include "dlfcn.h" // dlsym, RTLD_NEXT
-extern "C"
-{
-    extern decltype(dlsym) __libc_dlsym;
-    extern decltype(dlopen) __libc_dlopen_mode;
-}
+// CUPTI headers
+#include <cupti_callbacks.h>
+#include <cupti_profiler_target.h>
+#include <cupti_driver_cbid.h>
+#include <cupti_target.h>
+#include <cupti_activity.h>
+#include "helper_cupti.h"
 
-// Export InitializeInjection symbol
+// NVPW headers
+#include <nvperf_host.h>
+
+#include <Eval.h>
+using ::NV::Metric::Eval::PrintMetricValues;
+
+#include <Metric.h>
+using ::NV::Metric::Config::GetConfigImage;
+using ::NV::Metric::Config::GetCounterDataPrefixImage;
+
+#include <Utils.h>
+using ::NV::Metric::Utils::GetNVPWResultString;
+
+// Macros
+// Export InitializeInjection symbol.
 #ifdef _WIN32
 #define DLLEXPORT __declspec(dllexport)
 #define HIDDEN
@@ -87,68 +80,12 @@ extern "C"
 #define HIDDEN __attribute__((visibility("hidden")))
 #endif
 
-#ifndef EXIT_WAIVED
-#define EXIT_WAIVED 2
-#endif
-
-// Helpful error handlers for standard CUPTI and CUDA runtime calls
-#define CUPTI_API_CALL(apiFuncCall)                                            \
-do {                                                                           \
-    CUptiResult _status = apiFuncCall;                                         \
-    if (_status != CUPTI_SUCCESS) {                                            \
-        const char *errstr;                                                    \
-        cuptiGetResultString(_status, &errstr);                                \
-        fprintf(stderr, "%s:%d: error: function %s failed with error %s.\n",   \
-                __FILE__, __LINE__, #apiFuncCall, errstr);                     \
-        exit(EXIT_FAILURE);                                                    \
-    }                                                                          \
-} while (0)
-
-#define RUNTIME_API_CALL(apiFuncCall)                                          \
-do {                                                                           \
-    cudaError_t _status = apiFuncCall;                                         \
-    if (_status != cudaSuccess) {                                              \
-        fprintf(stderr, "%s:%d: error: function %s failed with error %s.\n",   \
-                __FILE__, __LINE__, #apiFuncCall, cudaGetErrorString(_status));\
-        exit(EXIT_FAILURE);                                                    \
-    }                                                                          \
-} while (0)
-
-#define MEMORY_ALLOCATION_CALL(var)                                            \
-do {                                                                            \
-    if (var == NULL) {                                                          \
-        fprintf(stderr, "%s:%d: Error: Memory Allocation Failed \n",            \
-                __FILE__, __LINE__);                                            \
-        exit(EXIT_FAILURE);                                                     \
-    }                                                                           \
-} while (0)
-
-#define DRIVER_API_CALL(apiFuncCall)                                           \
-do {                                                                           \
-    CUresult _status = apiFuncCall;                                            \
-    if (_status != CUDA_SUCCESS) {                                             \
-        fprintf(stderr, "%s:%d: error: function %s failed with error %d.\n",   \
-                __FILE__, __LINE__, #apiFuncCall, _status);                    \
-        exit(EXIT_FAILURE);                                                    \
-    }                                                                          \
-} while (0)
-
-#define NVPW_API_CALL(apiFuncCall)                                             \
-do {                                                                           \
-    NVPA_Status _status = apiFuncCall;                                         \
-    if (_status != NVPA_STATUS_SUCCESS) {                                      \
-        fprintf(stderr, "%s:%d: error: function %s failed with error %s.\n",   \
-            __FILE__, __LINE__, #apiFuncCall, GetNVPWResultString(_status));   \
-    exit(EXIT_FAILURE);                                                        \
-    }                                                                          \
-} while (0)
-
-// Profiler API configuration data, per-context
-struct ctxProfilerData
+// Profiler API configuration data, per-context.
+struct CtxProfilerData
 {
     CUcontext       ctx;
-    int             dev_id;
-    cudaDeviceProp  dev_prop;
+    int             deviceId;
+    cudaDeviceProp  deviceProp;
     vector<uint8_t> counterAvailabilityImage;
     CUpti_Profiler_CounterDataImageOptions counterDataImageOptions;
     vector<uint8_t> counterDataImage;
@@ -158,21 +95,22 @@ struct ctxProfilerData
     int             maxNumRanges;
     int             curRanges;
     int             maxRangeNameLength;
-    int             iterations; // Count of sessions
+    // Count of sessions.
+    int             iterations;
 
-    // Initialize fields, with env var overrides
-    ctxProfilerData() : curRanges(), maxRangeNameLength(64), iterations()
+    // Initialize fields, with env var overrides.
+    CtxProfilerData() : curRanges(), maxRangeNameLength(64), iterations()
     {
-        char * env_var = getenv("INJECTION_KERNEL_COUNT");
-        if (env_var != NULL)
+        char *pEnvVar = getenv("INJECTION_KERNEL_COUNT");
+        if (pEnvVar != NULL)
         {
-            int val = atoi(env_var);
-            if (val < 1)
+            int value = atoi(pEnvVar);
+            if (value < 1)
             {
-                cerr << "Read " << val << " kernels from INJECTION_KERNEL_COUNT, but must be >= 1; defaulting to 10." << endl;
-                val = 10;
+                cerr << "Read " << value << " kernels from INJECTION_KERNEL_COUNT, but must be >= 1; defaulting to 10." << endl;
+                value = 10;
             }
-            maxNumRanges = val;
+            maxNumRanges = value;
         }
         else
         {
@@ -181,19 +119,20 @@ struct ctxProfilerData
     };
 };
 
-// Track per-context profiler API data in a shared map
-mutex ctx_data_mutex;
-unordered_map<CUcontext, ctxProfilerData> ctx_data;
+// Track per-context profiler API data in a shared map.
+mutex ctxDataMutex;
+unordered_map<CUcontext, CtxProfilerData> contextData;
 
-// List of metrics to collect
+// List of metrics to collect.
 vector<string> metricNames;
 
-// Initialize state
-void initialize_state()
+// Initialize state.
+void
+InitializeState()
 {
-    static int profiler_initialized = 0;
+    static int profilerInitialized = 0;
 
-    if (profiler_initialized == 0)
+    if (profilerInitialized == 0)
     {
         // CUPTI Profiler API initialization
         CUpti_Profiler_Initialize_Params profilerInitializeParams = { CUpti_Profiler_Initialize_Params_STRUCT_SIZE };
@@ -203,177 +142,189 @@ void initialize_state()
         NVPW_InitializeHost_Params initializeHostParams = { NVPW_InitializeHost_Params_STRUCT_SIZE };
         NVPW_API_CALL(NVPW_InitializeHost(&initializeHostParams));
 
-        profiler_initialized = 1;
+        profilerInitialized = 1;
     }
 }
 
-// Initialize profiler for a context
-void initialize_ctx_data(ctxProfilerData &ctx_data)
+// Initialize profiler for a context.
+void
+InitializeContextData(
+    CtxProfilerData &contextData)
 {
-    initialize_state();
+    InitializeState();
 
-    // Get size of counterAvailabilityImage - in first pass, GetCounterAvailability return size needed for data
+    // Get size of counterAvailabilityImage - in first pass, GetCounterAvailability return size needed for data.
     CUpti_Profiler_GetCounterAvailability_Params getCounterAvailabilityParams = { CUpti_Profiler_GetCounterAvailability_Params_STRUCT_SIZE };
-    getCounterAvailabilityParams.ctx = ctx_data.ctx;
+    getCounterAvailabilityParams.ctx = contextData.ctx;
     CUPTI_API_CALL(cuptiProfilerGetCounterAvailability(&getCounterAvailabilityParams));
 
-    // Allocate sized counterAvailabilityImage
-    ctx_data.counterAvailabilityImage.resize(getCounterAvailabilityParams.counterAvailabilityImageSize);
+    // Allocate sized counterAvailabilityImage.
+    contextData.counterAvailabilityImage.resize(getCounterAvailabilityParams.counterAvailabilityImageSize);
 
-    // Initialize counterAvailabilityImage
-    getCounterAvailabilityParams.pCounterAvailabilityImage = ctx_data.counterAvailabilityImage.data();
+    // Initialize counterAvailabilityImage.
+    getCounterAvailabilityParams.pCounterAvailabilityImage = contextData.counterAvailabilityImage.data();
     CUPTI_API_CALL(cuptiProfilerGetCounterAvailability(&getCounterAvailabilityParams));
 
-    // Fill in configImage - can be run on host or target
-    if (!GetConfigImage(ctx_data.dev_prop.name, metricNames, ctx_data.configImage, ctx_data.counterAvailabilityImage.data()))
+    // Fill in configImage - can be run on host or target.
+    if (!GetConfigImage(contextData.deviceProp.name, metricNames, contextData.configImage, contextData.counterAvailabilityImage.data()))
     {
-        cerr << "Failed to create configImage for context " << ctx_data.ctx << endl;
+        cerr << "Failed to create configImage for context " << contextData.ctx << endl;
         exit(EXIT_FAILURE);
     }
 
-    // Fill in counterDataPrefixImage - can be run on host or target
-    if (!GetCounterDataPrefixImage(ctx_data.dev_prop.name, metricNames, ctx_data.counterDataPrefixImage, ctx_data.counterAvailabilityImage.data()))
+    // Fill in counterDataPrefixImage - can be run on host or target.
+    if (!GetCounterDataPrefixImage(contextData.deviceProp.name, metricNames, contextData.counterDataPrefixImage, contextData.counterAvailabilityImage.data()))
     {
-        cerr << "Failed to create counterDataPrefixImage for context " << ctx_data.ctx << endl;
+        cerr << "Failed to create counterDataPrefixImage for context " << contextData.ctx << endl;
         exit(EXIT_FAILURE);
     }
 
-    // Record counterDataPrefixImage info and other options for sizing the counterDataImage
-    ctx_data.counterDataImageOptions.pCounterDataPrefix = ctx_data.counterDataPrefixImage.data();
-    ctx_data.counterDataImageOptions.counterDataPrefixSize = ctx_data.counterDataPrefixImage.size();
-    ctx_data.counterDataImageOptions.maxNumRanges = ctx_data.maxNumRanges;
-    ctx_data.counterDataImageOptions.maxNumRangeTreeNodes = ctx_data.maxNumRanges;
-    ctx_data.counterDataImageOptions.maxRangeNameLength = ctx_data.maxRangeNameLength;
+    // Record counterDataPrefixImage info and other options for sizing the counterDataImage.
+    contextData.counterDataImageOptions.pCounterDataPrefix = contextData.counterDataPrefixImage.data();
+    contextData.counterDataImageOptions.counterDataPrefixSize = contextData.counterDataPrefixImage.size();
+    contextData.counterDataImageOptions.maxNumRanges = contextData.maxNumRanges;
+    contextData.counterDataImageOptions.maxNumRangeTreeNodes = contextData.maxNumRanges;
+    contextData.counterDataImageOptions.maxRangeNameLength = contextData.maxRangeNameLength;
 
-    // Calculate size of counterDataImage based on counterDataPrefixImage and options
+    // Calculate size of counterDataImage based on counterDataPrefixImage and options.
     CUpti_Profiler_CounterDataImage_CalculateSize_Params calculateSizeParams = { CUpti_Profiler_CounterDataImage_CalculateSize_Params_STRUCT_SIZE };
-    calculateSizeParams.pOptions = &(ctx_data.counterDataImageOptions);
+    calculateSizeParams.pOptions = &(contextData.counterDataImageOptions);
     calculateSizeParams.sizeofCounterDataImageOptions = CUpti_Profiler_CounterDataImageOptions_STRUCT_SIZE;
     CUPTI_API_CALL(cuptiProfilerCounterDataImageCalculateSize(&calculateSizeParams));
-    // Create counterDataImage
-    ctx_data.counterDataImage.resize(calculateSizeParams.counterDataImageSize);
+    // Create counterDataImage.
+    contextData.counterDataImage.resize(calculateSizeParams.counterDataImageSize);
 
-    // Initialize counterDataImage inside start_session
+    // Initialize counterDataImage inside StartSession.
     CUpti_Profiler_CounterDataImage_Initialize_Params initializeParams = { CUpti_Profiler_CounterDataImage_Initialize_Params_STRUCT_SIZE };
-    initializeParams.pOptions = &(ctx_data.counterDataImageOptions);
+    initializeParams.pOptions = &(contextData.counterDataImageOptions);
     initializeParams.sizeofCounterDataImageOptions = CUpti_Profiler_CounterDataImageOptions_STRUCT_SIZE;
-    initializeParams.counterDataImageSize = ctx_data.counterDataImage.size();
-    initializeParams.pCounterDataImage = ctx_data.counterDataImage.data();
+    initializeParams.counterDataImageSize = contextData.counterDataImage.size();
+    initializeParams.pCounterDataImage = contextData.counterDataImage.data();
     CUPTI_API_CALL(cuptiProfilerCounterDataImageInitialize(&initializeParams));
 
-    // Calculate scratchBuffer size based on counterDataImage size and counterDataImage
+    // Calculate scratchBuffer size based on counterDataImage size and counterDataImage.
     CUpti_Profiler_CounterDataImage_CalculateScratchBufferSize_Params scratchBufferSizeParams = { CUpti_Profiler_CounterDataImage_CalculateScratchBufferSize_Params_STRUCT_SIZE };
-    scratchBufferSizeParams.counterDataImageSize = ctx_data.counterDataImage.size();
-    scratchBufferSizeParams.pCounterDataImage = ctx_data.counterDataImage.data();
+    scratchBufferSizeParams.counterDataImageSize = contextData.counterDataImage.size();
+    scratchBufferSizeParams.pCounterDataImage = contextData.counterDataImage.data();
     CUPTI_API_CALL(cuptiProfilerCounterDataImageCalculateScratchBufferSize(&scratchBufferSizeParams));
     // Create counterDataScratchBuffer
-    ctx_data.counterDataScratchBufferImage.resize(scratchBufferSizeParams.counterDataScratchBufferSize);
+    contextData.counterDataScratchBufferImage.resize(scratchBufferSizeParams.counterDataScratchBufferSize);
 
-    // Initialize counterDataScratchBuffer
+    // Initialize counterDataScratchBuffer.
     CUpti_Profiler_CounterDataImage_InitializeScratchBuffer_Params initScratchBufferParams = { CUpti_Profiler_CounterDataImage_InitializeScratchBuffer_Params_STRUCT_SIZE };
-    initScratchBufferParams.counterDataImageSize = ctx_data.counterDataImage.size();
-    initScratchBufferParams.pCounterDataImage = ctx_data.counterDataImage.data();
-    initScratchBufferParams.counterDataScratchBufferSize = ctx_data.counterDataScratchBufferImage.size();;
-    initScratchBufferParams.pCounterDataScratchBuffer = ctx_data.counterDataScratchBufferImage.data();
+    initScratchBufferParams.counterDataImageSize = contextData.counterDataImage.size();
+    initScratchBufferParams.pCounterDataImage = contextData.counterDataImage.data();
+    initScratchBufferParams.counterDataScratchBufferSize = contextData.counterDataScratchBufferImage.size();;
+    initScratchBufferParams.pCounterDataScratchBuffer = contextData.counterDataScratchBufferImage.data();
     CUPTI_API_CALL(cuptiProfilerCounterDataImageInitializeScratchBuffer(&initScratchBufferParams));
 
 }
 
-// Start a session
-void start_session(ctxProfilerData &ctx_data)
+// Start a session.
+void
+StartSession(
+    CtxProfilerData &contextData)
 {
     CUpti_Profiler_BeginSession_Params beginSessionParams = { CUpti_Profiler_BeginSession_Params_STRUCT_SIZE };
-    beginSessionParams.counterDataImageSize = ctx_data.counterDataImage.size();
-    beginSessionParams.pCounterDataImage = ctx_data.counterDataImage.data();
-    beginSessionParams.counterDataScratchBufferSize = ctx_data.counterDataScratchBufferImage.size();
-    beginSessionParams.pCounterDataScratchBuffer = ctx_data.counterDataScratchBufferImage.data();
-    beginSessionParams.ctx = ctx_data.ctx;
-    beginSessionParams.maxLaunchesPerPass = ctx_data.maxNumRanges;
-    beginSessionParams.maxRangesPerPass = ctx_data.maxNumRanges;
+    beginSessionParams.counterDataImageSize = contextData.counterDataImage.size();
+    beginSessionParams.pCounterDataImage = contextData.counterDataImage.data();
+    beginSessionParams.counterDataScratchBufferSize = contextData.counterDataScratchBufferImage.size();
+    beginSessionParams.pCounterDataScratchBuffer = contextData.counterDataScratchBufferImage.data();
+    beginSessionParams.ctx = contextData.ctx;
+    beginSessionParams.maxLaunchesPerPass = contextData.maxNumRanges;
+    beginSessionParams.maxRangesPerPass = contextData.maxNumRanges;
     beginSessionParams.pPriv = NULL;
     beginSessionParams.range = CUPTI_AutoRange;
     beginSessionParams.replayMode = CUPTI_KernelReplay;
     CUPTI_API_CALL(cuptiProfilerBeginSession(&beginSessionParams));
 
     CUpti_Profiler_SetConfig_Params setConfigParams = { CUpti_Profiler_SetConfig_Params_STRUCT_SIZE };
-    setConfigParams.pConfig = ctx_data.configImage.data();
-    setConfigParams.configSize = ctx_data.configImage.size();
-    setConfigParams.passIndex = 0; // Only set for Application Replay mode
+    setConfigParams.pConfig = contextData.configImage.data();
+    setConfigParams.configSize = contextData.configImage.size();
+    // Only set for Application Replay mode
+    setConfigParams.passIndex = 0;
     setConfigParams.minNestingLevel = 1;
     setConfigParams.numNestingLevels = 1;
     setConfigParams.targetNestingLevel = 1;
     CUPTI_API_CALL(cuptiProfilerSetConfig(&setConfigParams));
 
     CUpti_Profiler_EnableProfiling_Params enableProfilingParams = { CUpti_Profiler_EnableProfiling_Params_STRUCT_SIZE };
-    enableProfilingParams.ctx = ctx_data.ctx;
+    enableProfilingParams.ctx = contextData.ctx;
     CUPTI_API_CALL(cuptiProfilerEnableProfiling(&enableProfilingParams));
 
-    ctx_data.iterations++;
+    contextData.iterations++;
 }
 
 // Print session data
-static void print_data(ctxProfilerData &ctx_data)
+static void
+PrintData(
+    CtxProfilerData &contextData)
 {
-    cout << endl << "Context " << ctx_data.ctx << ", device " << ctx_data.dev_id << " (" << ctx_data.dev_prop.name << ") session " << ctx_data.iterations << ":" << endl;
-    PrintMetricValues(ctx_data.dev_prop.name, ctx_data.counterDataImage, metricNames, ctx_data.counterAvailabilityImage.data());
+    cout << endl << "Context " << contextData.ctx << ", device " << contextData.deviceId << " (" << contextData.deviceProp.name << ") session " << contextData.iterations << ":" << endl;
+    PrintMetricValues(contextData.deviceProp.name, contextData.counterDataImage, metricNames, contextData.counterAvailabilityImage.data());
 }
 
 // End a session during execution
-void end_session(ctxProfilerData &ctx_data)
+void
+EndSession(
+    CtxProfilerData &contextData)
 {
     CUpti_Profiler_DisableProfiling_Params disableProfilingParams = { CUpti_Profiler_DisableProfiling_Params_STRUCT_SIZE };
-    disableProfilingParams.ctx = ctx_data.ctx;
+    disableProfilingParams.ctx = contextData.ctx;
     CUPTI_API_CALL(cuptiProfilerDisableProfiling(&disableProfilingParams));
 
     CUpti_Profiler_UnsetConfig_Params unsetConfigParams = { CUpti_Profiler_UnsetConfig_Params_STRUCT_SIZE };
-    unsetConfigParams.ctx = ctx_data.ctx;
+    unsetConfigParams.ctx = contextData.ctx;
     CUPTI_API_CALL(cuptiProfilerUnsetConfig(&unsetConfigParams));
 
     CUpti_Profiler_EndSession_Params endSessionParams = { CUpti_Profiler_EndSession_Params_STRUCT_SIZE };
-    endSessionParams.ctx = ctx_data.ctx;
+    endSessionParams.ctx = contextData.ctx;
     CUPTI_API_CALL(cuptiProfilerEndSession(&endSessionParams));
 
-    print_data(ctx_data);
+    PrintData(contextData);
 
     // Clear counterDataImage (otherwise it maintains previous records when it is reused)
     CUpti_Profiler_CounterDataImage_Initialize_Params initializeParams = { CUpti_Profiler_CounterDataImage_Initialize_Params_STRUCT_SIZE };
-    initializeParams.pOptions = &(ctx_data.counterDataImageOptions);
+    initializeParams.pOptions = &(contextData.counterDataImageOptions);
     initializeParams.sizeofCounterDataImageOptions = CUpti_Profiler_CounterDataImageOptions_STRUCT_SIZE;
-    initializeParams.counterDataImageSize = ctx_data.counterDataImage.size();
-    initializeParams.pCounterDataImage = ctx_data.counterDataImage.data();
+    initializeParams.counterDataImageSize = contextData.counterDataImage.size();
+    initializeParams.pCounterDataImage = contextData.counterDataImage.data();
     CUPTI_API_CALL(cuptiProfilerCounterDataImageInitialize(&initializeParams));
 }
 
-
+#include <fstream>
 std::ofstream kernelCounterFile;
 unsigned long long int globalCounter = 0;
 
 // Clean up at end of execution
-static void end_execution()
+static void
+EndExecution()
 {
     CUPTI_API_CALL(cuptiGetLastError());
-    ctx_data_mutex.lock();
+    ctxDataMutex.lock();
 
-    for (auto itr = ctx_data.begin(); itr != ctx_data.end(); ++itr)
+    for (auto itr = contextData.begin(); itr != contextData.end(); ++itr)
     {
-        ctxProfilerData &data = itr->second;
+        CtxProfilerData &data = itr->second;
 
         if (data.curRanges > 0)
         {
-            print_data(data);
+            PrintData(data);
             data.curRanges = 0;
         }
     }
-    printf("[DEBUG] end_execution kernel count: %lld\n", globalCounter);
-    if (kernelCounterFile.is_open())
-    {
-         kernelCounterFile.close(); 
-    }
-    ctx_data_mutex.unlock();
+
+    ctxDataMutex.unlock();
+    cout << "[DEBUG] total kernels counted: " << globalCounter << "." << std::endl;
 }
 
 // Callback handler
-void callback(void * userdata, CUpti_CallbackDomain domain, CUpti_CallbackId cbid, void const * cbdata)
+void
+ProfilerCallbackHandler(
+    void *pUserData,
+    CUpti_CallbackDomain domain,
+    CUpti_CallbackId callbackId,
+    void const *pCallbackData)
 {
     static int initialized = 0;
 
@@ -381,62 +332,88 @@ void callback(void * userdata, CUpti_CallbackDomain domain, CUpti_CallbackId cbi
     if (domain == CUPTI_CB_DOMAIN_DRIVER_API)
     {
         // For a driver call to launch a kernel:
-        if (cbid == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)
+        if (callbackId == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)
         {
-            CUpti_CallbackData const * data = static_cast<CUpti_CallbackData const *>(cbdata);
-            CUcontext ctx = data->context;
+            CUpti_CallbackData const *pData = static_cast<CUpti_CallbackData const *>(pCallbackData);
+            CUcontext ctx = pData->context;
 
             // On entry, enable / update profiling as needed
-            if (data->callbackSite == CUPTI_API_ENTER)
+            if (pData->callbackSite == CUPTI_API_ENTER)
             {
                 ++globalCounter;
-                if (globalCounter % ctx_data[ctx].maxNumRanges == 0)
+                if (globalCounter % contextData[ctx].maxNumRanges == 0)
                 {
                     kernelCounterFile.open("kernels_count", std::ios::out | std::ios::trunc);
                     kernelCounterFile << globalCounter << std::flush;
                     kernelCounterFile.close();
                 }
+                // // Check for this context in the configured contexts
+                // // If not configured, it isn't compatible with profiling
+                // ctxDataMutex.lock();
+                // if (contextData.count(ctx) > 0)
+                // {
+                //     // If at maximum number of ranges, end session and reset
+                //     if (contextData[ctx].curRanges == contextData[ctx].maxNumRanges)
+                //     {
+                //         EndSession(contextData[ctx]);
+                //         contextData[ctx].curRanges = 0;
+                //     }
+
+                //     // If no currently enabled session on this context, start one
+                //     if (contextData[ctx].curRanges == 0)
+                // {
+                //         InitializeContextData(contextData[ctx]);
+                //         StartSession(contextData[ctx]);
+                // }
+
+                //                     // Increment curRanges
+                //     contextData[ctx].curRanges++;
+                // }
+                // ctxDataMutex.unlock();
             }
         }
     }
     else if (domain == CUPTI_CB_DOMAIN_RESOURCE)
     {
         // When a context is created, check to see whether the device is compatible with the Profiler API
-        if (cbid == CUPTI_CBID_RESOURCE_CONTEXT_CREATED)
+        if (callbackId == CUPTI_CBID_RESOURCE_CONTEXT_CREATED)
         {
-            CUpti_ResourceData const * res_data = static_cast<CUpti_ResourceData const *>(cbdata);
-            CUcontext ctx = res_data->context;
+            CUpti_ResourceData const *pResourceData = static_cast<CUpti_ResourceData const *>(pCallbackData);
+            CUcontext ctx = pResourceData->context;
 
             // Configure handler for new context under lock
-            ctxProfilerData data = { };
+            CtxProfilerData data = { };
 
             data.ctx = ctx;
 
-            RUNTIME_API_CALL(cudaGetDevice(&(data.dev_id)));
+            RUNTIME_API_CALL(cudaGetDevice(&(data.deviceId)));
+
+            RUNTIME_API_CALL(cudaGetDeviceProperties(&(data.deviceProp), data.deviceId));
 
             // Initialize profiler API and test device compatibility
-            initialize_state();
+            InitializeState();
             CUpti_Profiler_DeviceSupported_Params params = { CUpti_Profiler_DeviceSupported_Params_STRUCT_SIZE };
-            params.cuDevice = data.dev_id;
+            params.cuDevice = data.deviceId;
+            params.api = CUPTI_PROFILER_RANGE_PROFILING;
             CUPTI_API_CALL(cuptiProfilerDeviceSupported(&params));
 
             // If valid for profiling, set up profiler and save to shared structure
-            ctx_data_mutex.lock();
+            ctxDataMutex.lock();
             if (params.isSupported == CUPTI_PROFILER_CONFIGURATION_SUPPORTED)
             {
                 // Update shared structures
-                ctx_data[ctx] = data;
-                initialize_ctx_data(ctx_data[ctx]);
+                contextData[ctx] = data;
+                InitializeContextData(contextData[ctx]);
             }
             else
             {
-                if (ctx_data.count(ctx))
+                if (contextData.count(ctx))
                 {
                     // Update shared structures
-                    ctx_data.erase(ctx);
+                    contextData.erase(ctx);
                 }
 
-                cerr << "libinjection_2: Unable to profile context on device " << data.dev_id << endl;
+                cerr << "libinjection: Unable to profile context on device " << data.deviceId << endl;
 
                 if (params.architecture == CUPTI_PROFILER_CONFIGURATION_UNSUPPORTED)
                 {
@@ -466,8 +443,13 @@ void callback(void * userdata, CUpti_CallbackDomain domain, CUpti_CallbackId cbi
                 {
                     ::std::cerr << "\tNVIDIA Crypto Mining Processors (CMP) are not supported" << ::std::endl;
                 }
+
+                if (params.wsl == CUPTI_PROFILER_CONFIGURATION_UNSUPPORTED)
+                {
+                    ::std::cerr << "\tWSL is not supported" << ::std::endl;
             }
-            ctx_data_mutex.unlock();
+            }
+            ctxDataMutex.unlock();
         }
     }
 
@@ -475,39 +457,40 @@ void callback(void * userdata, CUpti_CallbackDomain domain, CUpti_CallbackId cbi
 }
 
 // Register callbacks for several points in target application execution
-void register_callbacks()
+void
+RegisterCallbacks()
 {
     // One subscriber is used to register multiple callback domains
     CUpti_SubscriberHandle subscriber;
-    CUPTI_API_CALL(cuptiSubscribe(&subscriber, (CUpti_CallbackFunc)callback, NULL));
+    CUPTI_API_CALL(cuptiSubscribe(&subscriber, (CUpti_CallbackFunc)ProfilerCallbackHandler, NULL));
     // Runtime callback domain is needed for kernel launch callbacks
     CUPTI_API_CALL(cuptiEnableCallback(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API, CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel));
     // Resource callback domain is needed for context creation callbacks
-    //CUPTI_API_CALL(cuptiEnableCallback(1, subscriber, CUPTI_CB_DOMAIN_RESOURCE, CUPTI_CBID_RESOURCE_CONTEXT_CREATED));
+    CUPTI_API_CALL(cuptiEnableCallback(1, subscriber, CUPTI_CB_DOMAIN_RESOURCE, CUPTI_CBID_RESOURCE_CONTEXT_CREATED));
 
     // Register callback for application exit
-    atexit(end_execution);
+    atexit(EndExecution);
 }
 
 static bool injectionInitialized = false;
 
-// InitializeInjection should be called before the first CUDA function in the
-// target application.  It cannot call any CUDA runtime or driver code, but
-// the CUPTI Callback API is supported at this point.
-extern "C" DLLEXPORT int InitializeInjection()
+// InitializeInjection will be called by the driver when the tool is loaded
+// by CUDA_INJECTION64_PATH
+extern "C" DLLEXPORT int
+InitializeInjection()
 {
     if (injectionInitialized == false)
     {
         injectionInitialized = true;
 
         // Read in optional list of metrics to gather
-        char * metrics_env = getenv("INJECTION_METRICS");
-        if (metrics_env != NULL)
+        char *pMetricEnv = getenv("INJECTION_METRICS");
+        if (pMetricEnv != NULL)
         {
-            char * tok = strtok(metrics_env, " ;,");
+            char * tok = strtok(pMetricEnv, " ;,");
             do
             {
-                cout << "Read " << tok << endl;
+                cout << "Requesting metric '" << tok << "'" << endl;
                 metricNames.push_back(string(tok));
                 tok = strtok(NULL, " ;,");
             } while (tok != NULL);
@@ -520,29 +503,7 @@ extern "C" DLLEXPORT int InitializeInjection()
         }
 
         // Subscribe to some callbacks
-        register_callbacks();
+        RegisterCallbacks();
     }
     return 1;
-}
-
-// Whether the application calls the runtime or driver CUDA API, dynamic
-// linking will likely use dlsym - intercept this call with LD_PRELOAD to
-// have a convenient place to initialize Cupti Callback API.
-extern "C" DLLEXPORT void * dlsym(void * handle, char const * symbol)
-{
-    InitializeInjection();
-
-    typedef void * (*dlsym_fn)(void *, char const *);
-    static dlsym_fn real_dlsym = NULL;
-    if (real_dlsym == NULL)
-    {
-        // Use libc internal names to avoid recursive call
-        real_dlsym = (dlsym_fn)(__libc_dlsym(__libc_dlopen_mode("libdl.so", RTLD_LAZY), "dlsym"));
-    }
-    if (real_dlsym == NULL)
-    {
-        cerr << "Error finding real dlsym symbol" << endl;
-        return NULL;
-    }
-    return real_dlsym(handle, symbol);
 }

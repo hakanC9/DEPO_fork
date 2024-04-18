@@ -9,14 +9,14 @@ endif
 CUDA_INSTALL_PATH ?= /usr/local/cuda
 PROFILER_HOST_UTILS_SRC ?= ./extensions/src/profilerhost_util
 NVCC := "$(CUDA_INSTALL_PATH)/bin/nvcc"
-INCLUDES := -I"$(CUDA_INSTALL_PATH)/include" -I./extensions/include/profilerhost_util -I./extensions/include/c_util
+INCLUDES := -I"$(CUDA_INSTALL_PATH)/include" -I./include -I./extensions/include/profilerhost_util -I./extensions/include/c_util -I./common
 
 TARGET_ARCH ?= $(HOST_ARCH)
 TARGET_OS ?= $(shell uname | tr A-Z a-z)
 
 # Set required library paths.
 # In the case of cross-compilation, set the libs to the correct ones under /usr/local/cuda/targets/<TARGET_ARCH>-<TARGET_OS>/lib
-
+NVCCFLAGS :=
 ifeq ($(OS), Windows_NT)
     LIB_PATH ?= ..\..\lib64
 else
@@ -55,8 +55,29 @@ else
     BINEXT =
 endif
 
+ifneq ($(TARGET_ARCH), $(HOST_ARCH))
+    ifeq ($(TARGET_ARCH), aarch64)
+        ifeq ($(TARGET_OS), linux)
+            HOST_COMPILER ?= aarch64-linux-gnu-g++
+        else ifeq ($(TARGET_OS),qnx)
+            ifeq ($(QNX_HOST),)
+                $(error ERROR - QNX_HOST must be passed to the QNX host toolchain)
+            endif
+            ifeq ($(QNX_TARGET),)
+                $(error ERROR - QNX_TARGET must be passed to the QNX target toolchain)
+            endif
+            HOST_COMPILER ?= $(QNX_HOST)/usr/bin/q++
+            NVCCFLAGS += --qpp-config 8.3.0,gcc_ntoaarch64le -lsocket
+        endif
+    endif
+
+    ifdef HOST_COMPILER
+        NVCC_COMPILER := -ccbin $(HOST_COMPILER)
+    endif
+endif
+
 # Gencode arguments
-SMS ?= 70 72 75 80 86 87
+SMS ?= 70 72 75 80 86 87 89 90
 # Generate SASS code for each SM architecture listed in $(SMS)
 # Needed to support enhanced compatibility
 $(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
