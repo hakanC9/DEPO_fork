@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -359,7 +359,8 @@ void Eco::execPhase(
     printLine();
 }
 
-int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW) {
+int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW)
+{
     // check if default power cap is higher than max power cap (TDP)
     if (currHighLimit_uW < device_->getDefaultCaps().defaultConstrPKG_->longPower) {
         currHighLimit_uW = device_->getDefaultCaps().defaultConstrPKG_->longPower;
@@ -371,7 +372,8 @@ int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW
     return currHighLimit_uW;
 }
 
-void Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor) {
+void Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor)
+{
     if (dup2(stdoutFileDescriptor, 1) < 0) {
         perror("dup2");
         abort();
@@ -449,27 +451,12 @@ int Eco::goldenSectionSearchForBestPowerCap(
     return (a + b) / 2;
 }
 
-FinalPowerAndPerfResult Eco::runAppWithGoldenSectionSearch(
-    char* const* argv,
-    TargetMetric targerMetric)
-{
-    return runAppWithSearch(argv, targerMetric, SearchType::GOLDEN_SECTION_SEARCH);
-}
-
-FinalPowerAndPerfResult Eco::runAppWithLinearSearch(
-    char* const* argv,
-    TargetMetric targerMetric)
-{
-    return runAppWithSearch(argv, targerMetric, SearchType::LINEAR_SEARCH);
-}
-
 FinalPowerAndPerfResult Eco::runAppWithSearch(
     char* const* argv,
     TargetMetric targerMetric,
     SearchType searchType,
     int argc)
 {
-
     // this is redirecting the original output of the tuned application to txt file
     int fd = open("redirected.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
     if (fd < 0) { perror("open"); abort(); }

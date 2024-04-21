@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -86,10 +86,6 @@ class Eco : public EcoApi
 
     void referenceRunWithoutCaps(char* const*);
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
-    FinalPowerAndPerfResult runAppWithLinearSearch(char* const*,
-                                                   TargetMetric = TargetMetric::MIN_E);
-    FinalPowerAndPerfResult runAppWithGoldenSectionSearch(char* const*,
-                                                          TargetMetric = TargetMetric::MIN_E);
     void storeReferenceRun(FinalPowerAndPerfResult&);
 
     Eco(std::shared_ptr<IntelDevice>);
