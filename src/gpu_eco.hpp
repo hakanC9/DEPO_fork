@@ -53,6 +53,7 @@ class CudaDevice // this class should be named "cuda device container or sth lik
     std::pair<unsigned, unsigned> getMinMaxLimitInWatts(unsigned deviceID);
     void resetKernelCounterRegister();
     double getCurrentPowerInWattsForDeviceID(); // this method shall have the input parameter "deviceID" back
+    unsigned long long int getPerfCounter() const;
 
   private:
     void initDeviceHandles();

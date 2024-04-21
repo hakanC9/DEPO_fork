@@ -119,6 +119,7 @@ CudaDevice::CudaDevice(int devID) :
     }
     printf("Found %d device%s\n\n", deviceCount_, deviceCount_ != 1 ? "s" : "");
     initDeviceHandles();
+    std::cout << "DEBUG device handles initialized succesfully" << std::endl;
 }
 
 double CudaDevice::getPowerLimitInWatts(unsigned deviceID) const
@@ -205,6 +206,17 @@ void CudaDevice::initDeviceHandles()
     }
 }
 
+unsigned long long int CudaDevice::getPerfCounter() const
+{
+    long long int kernelsCountTmp {-1};
+    do
+    {
+        kernelsCountTmp = readValueFromFile("./kernels_count");
+    }
+    while (kernelsCountTmp == -1);
+
+    return (unsigned long long)kernelsCountTmp;
+}
 
 
 GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
@@ -218,6 +230,7 @@ GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
     // prev_ = curr_ = next_ = NvidiaState(0.0, 0,);
     sample();
     sample();
+    std::cout << "DEBUG device state initialized succesfully" << std::endl;
 }
 
 GpuDeviceState& GpuDeviceState::sample()
@@ -225,16 +238,11 @@ GpuDeviceState& GpuDeviceState::sample()
     prev_ = curr_;
     curr_ = next_;
 
-    long long int kernelsCountTmp {-1};
-    do
-    {
-        kernelsCountTmp = readValueFromFile("./kernels_count");
-    }
-    while (kernelsCountTmp == -1);
+    const auto kernelsCounter = gpu_->getPerfCounter();
 
     next_ = NvidiaState(
         gpu_->getCurrentPowerInWattsForDeviceID(),
-        (unsigned long long)kernelsCountTmp,
+        kernelsCounter,
         std::chrono::high_resolution_clock::now());
 
     auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
