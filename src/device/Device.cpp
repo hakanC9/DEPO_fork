@@ -463,7 +463,7 @@ double IntelDevice::getCurrentPowerInWattsForDeviceID() const // this method sha
 }
 
 
-void IntelDevice::resetPerfCountersAndRaplPkgs()
+void IntelDevice::reset()
 {
     for (auto&& rapl : raplVec_)
     {
@@ -486,4 +486,13 @@ double IntelDevice::getNumInstructionsSinceReset() const
 unsigned long long int IntelDevice::getPerfCounter() const
 {
     return (unsigned long long) this->getNumInstructionsSinceReset();
+}
+
+
+void IntelDevice::triggerPowerApiSample()
+{
+    for (auto&& rapl : raplVec_)
+    {
+        rapl.sample();
+    }
 }

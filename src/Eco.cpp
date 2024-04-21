@@ -247,7 +247,7 @@ PowAndPerfResult Eco::setCapAndMeasure(int cap,
     return checkPowerAndPerformance(usPeriod);
 }
 
-// try to exclude printing from ECO
+// TODO: try to exclude printing from ECO
 static inline
 void printLine() {
     std::cout << "-----------------------------------------------"

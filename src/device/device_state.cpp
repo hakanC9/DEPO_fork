@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 
 #include <set>
 
-DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<IntelDevice> d) :
+DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<Device> d) :
     absoluteStartTime_(std::chrono::high_resolution_clock::now()),
     timeOfLastReset_(std::chrono::high_resolution_clock::now()),
     device_(d),
@@ -31,7 +31,7 @@ DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<IntelDevice> d) :
 
 void DeviceStateAccumulator::resetState()
 {
-    device_->resetPerfCountersAndRaplPkgs();
+    device_->reset();
     timeOfLastReset_ = std::chrono::high_resolution_clock::now();
     totalEnergySinceReset_ = 0.0;
     sample();
@@ -47,7 +47,7 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
     // in order to have any valid readings, RAPL must be sampled
     // preety frequently so that the energy counter reading is updated
     // before the couter overflow.
-    device_->triggerRaplSample();
+    device_->triggerPowerApiSample();
     // for other devices like NVIDIA it is handled by the API (e.g., NVML)
     // ------------------------------------------------------------------
     const auto  perfCounter = device_->getPerfCounter();
@@ -60,43 +60,20 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
     auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
     totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
     return *this;
-
-    // for (auto&& rapl : raplVec_)
-    // {
-    //     rapl.sample();
-    // }
 }
 
-double DeviceStateAccumulator::getCurrentPower(Domain d) {
-    // double result = 0.0;
-    // for (auto&& rapl : raplVec_)
-    // {
-    //     result += rapl.getCurrentPower()[d];
-    // }
+double DeviceStateAccumulator::getCurrentPower(Domain d)
+{
     return device_->getCurrentPowerInWattsForDeviceID();
-
 }
 
 double DeviceStateAccumulator::getPerfCounterSinceReset()
 {
-    return device_->getNumInstructionsSinceReset();
+    return device_->getPerfCounter();
 }
-
-// double DeviceStateAccumulator::getTimeSinceReset() const
-// {
-//     std::set<double> timeSet;
-//     for (auto&& rapl : raplVec_) {
-//         timeSet.insert(rapl.get_total_time());
-//     }
-//     return *timeSet.rbegin(); // set is sorted containter
-// }
 
 double DeviceStateAccumulator::getEnergySinceReset(Domain d) const
 {
-    // double result = 0.0;
-    // for (auto&& rapl : raplVec_) {
-    //     result += rapl.getTotalEnergy()[d];
-    // }
     return totalEnergySinceReset_;
 }
 

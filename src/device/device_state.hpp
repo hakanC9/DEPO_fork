@@ -32,9 +32,10 @@ struct PowerAndPerfState
     TimePoint time_;
 };
 
-class DeviceStateAccumulator {
+class DeviceStateAccumulator
+{
 public:
-    DeviceStateAccumulator(std::shared_ptr<IntelDevice>);
+    DeviceStateAccumulator(std::shared_ptr<Device>);
     ~DeviceStateAccumulator() {}
 
     /*
@@ -81,7 +82,7 @@ public:
 private:
     TimePoint absoluteStartTime_;
     TimePoint timeOfLastReset_;
-    std::shared_ptr<IntelDevice> device_;
+    std::shared_ptr<Device> device_;
     PowerAndPerfState prev_, curr_, next_;
     double totalEnergySinceReset_ {0.0};
 };

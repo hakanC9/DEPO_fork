@@ -57,6 +57,19 @@ public:
     virtual double getPowerLimitInWatts() const = 0;
     virtual void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG) = 0;
     virtual RaplDefaults getDefaultCaps() const = 0; // TODO: remove dependency on RAPL
+    virtual void reset() = 0;
+    virtual unsigned long long int getPerfCounter() const = 0;
+    virtual double getCurrentPowerInWattsForDeviceID() const = 0;
+    /*
+      triggerPowerApiSample - used to trigger next sample from Power Management API
+
+      This method is required for generalization of DeviceStateAccumulator.
+      Intel RAPL API depends on explicit triggering of next energy counter reads while
+      other vendors (like, e.g., NVIDIA in NVML) do it automatically in the library.
+      This makes defining this method OPTIONAL for most of vendors - the method definition
+      may be just left empty. For Intel it needs to have Rapl::sample() method call.
+    */
+    virtual void triggerPowerApiSample() = 0;
 
 private:
 };
@@ -71,9 +84,11 @@ public:
     double getPowerLimitInWatts() const override;
     void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG) override;
     std::string getName() const override;
-    double getCurrentPowerInWattsForDeviceID() const;
+    void reset() override;
+    double getCurrentPowerInWattsForDeviceID() const override;
+    void triggerPowerApiSample() override;
 
-    unsigned long long int getPerfCounter() const;
+    unsigned long long int getPerfCounter() const override;
     /*
       getDeviceMaxPowerInWatts - used to determine the available power limits range
 
@@ -85,16 +100,8 @@ public:
     RaplDefaults getDefaultCaps() const override;
     AvailableRaplPowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
-    void resetPerfCountersAndRaplPkgs();
     double getNumInstructionsSinceReset() const;
     std::vector<int> getPkgToFirstCoreMap() const { return pkgToFirstCoreMap_; }
-    void triggerRaplSample()
-    {
-        for (auto&& rapl : raplVec_)
-        {
-            rapl.sample();
-        }
-    }
 
 private:
     void detectCPU();
