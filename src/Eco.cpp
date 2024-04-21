@@ -57,11 +57,12 @@ Eco::Eco(std::shared_ptr<IntelDevice> d) :
     smaFilters_.emplace(FilterType::SMA_20_S, 20000 / cfg_.msPause_);
     checkIdlePowerConsumption();
     defaultPowerLimitInWatts_ = device_->getPowerLimitInWatts();
+    std::cout << "[DEBUG] defaultPowerLimitInWatts_ stored: " << defaultPowerLimitInWatts_ << std::endl;
 }
 
 Eco::~Eco() {
-    // device_->restoreDefaults();
-    device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
+    dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
+    // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
     modifyWatchdog(defaultWatchdog);
     outPowerFile.close();
 }
@@ -163,10 +164,10 @@ void Eco::checkIdlePowerConsumption() {
     // TODO: assign structure object, not each element separately
     double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
 
-    idleAvPow_[Domain::PKG] = devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds;
-    idleAvPow_[Domain::PP0] = devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds;
-    idleAvPow_[Domain::PP1] = devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds;
-    idleAvPow_[Domain::DRAM] = devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds;
+    idleAvPow_[Domain::PKG] = devStateGlobal_.getEnergySinceReset() / totalTimeInSeconds;
+    // idleAvPow_[Domain::PP0] = devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds;
+    // idleAvPow_[Domain::PP1] = devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds;
+    // idleAvPow_[Domain::DRAM] = devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds;
     std::cout << std::fixed << std::setprecision(3)
               << "\nIdle average power consumption:\n"
               << "\t PKG: " << idleAvPow_[Domain::PKG] << " W\n"
@@ -228,7 +229,7 @@ PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
     devStateLocal_.resetState();
     localPowerSample(usPeriod);
     double timeInSeconds = (double)usPeriod / 10e6;
-    double energyInJoules = devStateLocal_.getEnergySinceReset(Domain::PKG);
+    double energyInJoules = devStateLocal_.getEnergySinceReset();
 
     return PowAndPerfResult(devStateLocal_.getPerfCounterSinceReset(),
                             timeInSeconds,
@@ -275,7 +276,7 @@ void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b) {
 }
 
 void Eco::reportResult(double waitTime, double testTime) {
-    auto&& totalE = devStateGlobal_.getEnergySinceReset(Domain::PKG);
+    auto&& totalE = devStateGlobal_.getEnergySinceReset();
     auto&& totalTime = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
     std::cout << "Total E: " << totalE;
     // ----------------------------------------------------------------------------------------
@@ -366,10 +367,10 @@ void Eco::execPhase(
 int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW)
 {
     // check if default power cap is higher than max power cap (TDP)
-    // if (currHighLimit_uW < device_->getDefaultCaps().defaultConstrPKG_->longPower) {
-    //     currHighLimit_uW = device_->getDefaultCaps().defaultConstrPKG_->longPower;
-    if (currHighLimit_uW < defaultPowerLimitInWatts_) {
-        currHighLimit_uW = defaultPowerLimitInWatts_;
+    if (currHighLimit_uW < dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower) {
+        currHighLimit_uW = dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower;
+    // if (currHighLimit_uW < defaultPowerLimitInWatts_) {
+    //     currHighLimit_uW = defaultPowerLimitInWatts_;
     }
     // reduce starting high power limit according to first result's average power
     if ((firstResult.averageCorePowerInWatts_ * 1000000) < (currHighLimit_uW/2)) {
@@ -498,8 +499,8 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
                                     firstResult);
             });
             execPhase(bestCap, status, childProcId, firstResult);
-            // device_->restoreDefaults();
-            device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
+            dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
+            // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
         }
     }
     else
@@ -512,11 +513,14 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
     double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
 
     return FinalPowerAndPerfResult(device_->getMinMaxLimitInWatts().second,
-                                devStateGlobal_.getEnergySinceReset(Domain::PKG),
-                                devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds,
-                                devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
-                                devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds,
-                                devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(),
+                                devStateGlobal_.getEnergySinceReset() / totalTimeInSeconds,
+                                // devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
+                                // devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds,
+                                // devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds,
+                                0.0,
+                                0.0,
+                                0.0,
                                 TimeResult(totalTimeInSeconds, waitTime, testTime),
                                 0.0,
                                 0.0);
@@ -529,11 +533,14 @@ FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
     double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
 
     return FinalPowerAndPerfResult(device_->getMinMaxLimitInWatts().second,
-                                devStateGlobal_.getEnergySinceReset(Domain::PKG),
-                                devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds,
-                                devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
-                                devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds,
-                                devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds,
+                                devStateGlobal_.getEnergySinceReset(),
+                                devStateGlobal_.getEnergySinceReset() / totalTimeInSeconds,
+                                // devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
+                                // devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds,
+                                // devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds,
+                                0.0,
+                                0.0,
+                                0.0,
                                 totalTimeInSeconds,
                                 devStateGlobal_.getPerfCounterSinceReset(),
                                 0.0 // num of cycles is not needed, so might be removed in the future
@@ -570,7 +577,7 @@ void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
 
 void Eco::referenceRunWithoutCaps(char* const* argv) {
     auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
-    fullAppRunResultsContainer_.emplace_back(defaultPowerLimitInWatts_, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
+    fullAppRunResultsContainer_.emplace_back(dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
                                     avResult.energy,
                                     avResult.pkgPower,
                                     avResult.pp0power,
@@ -731,8 +738,8 @@ void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
             break;
         }
     }
-    // device_->restoreDefaults();
-    device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
+    dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
+    // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
     stream << "# PowerCap for: min(E): "
             << std::min_element(resultsVec.begin(),
                                 resultsVec.end(),

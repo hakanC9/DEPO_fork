@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -81,65 +81,65 @@ class CudaDevice : public Device
 };
 
 
-class GpuDeviceState
-{
-  public:
-    GpuDeviceState(std::shared_ptr<CudaDevice>& device);
+// class GpuDeviceState
+// {
+//   public:
+//     GpuDeviceState(std::shared_ptr<CudaDevice>& device);
 
-    GpuDeviceState& sample();
-    void resetState();
-
-
-    /*
-      getCurrentPowerAndPerf - needed mostly (only?) for logging purposes
-
-      returns the PowerAndPerfResult struct with the data based on the difference
-      between next and current state. Such data is used for power log.
-    */
-    PowAndPerfResult getCurrentPowerAndPerf(int deviceID) const;
+//     GpuDeviceState& sample();
+//     void resetState();
 
 
-    /*
-      getEnergySinceReset - is used for the final evaluation of energy consumed
+//     /*
+//       getCurrentPowerAndPerf - needed mostly (only?) for logging purposes
 
-      returns the integrate of energy sampled since last Accumulator reset.
-    */
-    double getEnergySinceReset() const;
-
-
-    /*
-      getTimeSinceReset - is used for the final evaluation of time spent on computations
-
-      returns the time difference between now and last Accumulator reset.
-    */
-    template <class Resolution = std::chrono::milliseconds>
-    double getTimeSinceReset() const
-    {
-        return std::chrono::duration_cast<Resolution>(
-                    std::chrono::high_resolution_clock::now()  - timeOfLastReset_).count();
-    }
+//       returns the PowerAndPerfResult struct with the data based on the difference
+//       between next and current state. Such data is used for power log.
+//     */
+//     PowAndPerfResult getCurrentPowerAndPerf(int deviceID) const;
 
 
-    /*
-      getTimeSinceObjectCreation - used only for logging purposes.
+//     /*
+//       getEnergySinceReset - is used for the final evaluation of energy consumed
 
-      returns the absolute time since the creation of the device state accumulator. Needed
-      for logging data used for power log creation.
-    */
-    template <class Resolution = std::chrono::milliseconds>
-    double getTimeSinceObjectCreation() const
-    {
-        return std::chrono::duration_cast<Resolution>(
-                    std::chrono::high_resolution_clock::now()  - absoluteStartTime_).count();
-    }
+//       returns the integrate of energy sampled since last Accumulator reset.
+//     */
+//     double getEnergySinceReset() const;
 
-  private:
-    TimePoint absoluteStartTime_;
-    TimePoint timeOfLastReset_;
-    std::shared_ptr<CudaDevice> gpu_;
-    PowerAndPerfState prev_, curr_, next_;
-    double totalEnergySinceReset_ {0.0};
-};
+
+//     /*
+//       getTimeSinceReset - is used for the final evaluation of time spent on computations
+
+//       returns the time difference between now and last Accumulator reset.
+//     */
+//     template <class Resolution = std::chrono::milliseconds>
+//     double getTimeSinceReset() const
+//     {
+//         return std::chrono::duration_cast<Resolution>(
+//                     std::chrono::high_resolution_clock::now()  - timeOfLastReset_).count();
+//     }
+
+
+//     /*
+//       getTimeSinceObjectCreation - used only for logging purposes.
+
+//       returns the absolute time since the creation of the device state accumulator. Needed
+//       for logging data used for power log creation.
+//     */
+//     template <class Resolution = std::chrono::milliseconds>
+//     double getTimeSinceObjectCreation() const
+//     {
+//         return std::chrono::duration_cast<Resolution>(
+//                     std::chrono::high_resolution_clock::now()  - absoluteStartTime_).count();
+//     }
+
+//   private:
+//     TimePoint absoluteStartTime_;
+//     TimePoint timeOfLastReset_;
+//     std::shared_ptr<CudaDevice> gpu_;
+//     PowerAndPerfState prev_, curr_, next_;
+//     double totalEnergySinceReset_ {0.0};
+// };
 
 class GpuEco : public EcoApi
 {
@@ -184,7 +184,7 @@ class GpuEco : public EcoApi
 
   private:
     std::shared_ptr<CudaDevice> gpu_;
-    std::unique_ptr<GpuDeviceState> deviceState_;
+    std::unique_ptr<DeviceStateAccumulator> deviceState_;
     unsigned minPowerLimit_, maxPowerLimit_;
     double defaultPowerLimitInWatts_;
     int deviceID_;

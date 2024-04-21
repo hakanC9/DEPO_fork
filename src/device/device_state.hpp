@@ -17,6 +17,7 @@
 #pragma once
 
 #include "Device.hpp"
+#include "../helpers/power_and_perf_result.hpp"
 
 using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
@@ -39,11 +40,19 @@ public:
     ~DeviceStateAccumulator() {}
 
     /*
+      getCurrentPowerAndPerf - needed mostly (only?) for logging purposes
+
+      returns the PowerAndPerfResult struct with the data based on the difference
+      between next and current state. Such data is used for power log.
+    */
+    PowAndPerfResult getCurrentPowerAndPerf() const;
+
+    /*
       getEnergySinceReset - is used for the final evaluation of energy consumed
 
       returns the integrate of energy sampled since last Accumulator reset.
     */
-    double getEnergySinceReset(Domain d) const;
+    double getEnergySinceReset() const;
 
     /*
       getTimeSinceReset - is used for the final evaluation of time spent on computations

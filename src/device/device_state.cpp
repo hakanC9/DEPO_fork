@@ -72,9 +72,23 @@ double DeviceStateAccumulator::getPerfCounterSinceReset()
     return device_->getPerfCounter();
 }
 
-double DeviceStateAccumulator::getEnergySinceReset(Domain d) const
+double DeviceStateAccumulator::getEnergySinceReset() const
 {
     return totalEnergySinceReset_;
+}
+
+PowAndPerfResult DeviceStateAccumulator::getCurrentPowerAndPerf() const
+{
+    double timeDeltaMilliSeconds = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
+    return PowAndPerfResult(
+        (double)(next_.kernelsCount_ - curr_.kernelsCount_),
+        timeDeltaMilliSeconds / 1000,
+        device_->getPowerLimitInWatts(),
+        next_.power_ * timeDeltaMilliSeconds / 1000, // Watts x seconds
+        next_.power_,
+        0.0, // memory power - not available for GPU
+        next_.power_ // TODO: this should be filtered power
+        );
 }
 
 // Temporary disabled

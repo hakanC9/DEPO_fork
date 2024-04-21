@@ -94,14 +94,14 @@ int main(int argc, char *argv[]) {
 			double totalTimeInSeconds = ds.getTimeSinceReset();
 
 			std::cout << std::endl
-				<< "\t PKG Total Energy:\t" << ds.getEnergySinceReset(Domain::PKG) << " J" << std::endl
-				<< "\t PP0 Total Energy:\t" << ds.getEnergySinceReset(Domain::PP0) << " J" << std::endl
-				<< "\t PP1 Total Energy:\t" << ds.getEnergySinceReset(Domain::PP1) << " J" << std::endl
-				<< "\tDRAM Total Energy:\t" << ds.getEnergySinceReset(Domain::DRAM) << " J" << std::endl
-				<< "\t PKG Average Power:\t" << ds.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds << " W" << std::endl
-				<< "\t PP0 Average Power:\t" << ds.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds << " W" << std::endl
-				<< "\t PP1 Average Power:\t" << ds.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds << " W" << std::endl
-				<< "\tDRAM Average Power:\t" << ds.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds << " W" << std::endl
+				<< "\t PKG Total Energy:\t" << ds.getEnergySinceReset() << " J" << std::endl
+				// << "\t PP0 Total Energy:\t" << ds.getEnergySinceReset(Domain::PP0) << " J" << std::endl
+				// << "\t PP1 Total Energy:\t" << ds.getEnergySinceReset(Domain::PP1) << " J" << std::endl
+				// << "\tDRAM Total Energy:\t" << ds.getEnergySinceReset(Domain::DRAM) << " J" << std::endl
+				<< "\t PKG Average Power:\t" << ds.getEnergySinceReset() / totalTimeInSeconds << " W" << std::endl
+				// << "\t PP0 Average Power:\t" << ds.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds << " W" << std::endl
+				// << "\t PP1 Average Power:\t" << ds.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds << " W" << std::endl
+				// << "\tDRAM Average Power:\t" << ds.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds << " W" << std::endl
 				<< "\tTotal time:\t\t" << totalTimeInSeconds << " sec" << std::endl;
 		}
 	} else {

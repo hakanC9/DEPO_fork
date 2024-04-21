@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -220,71 +220,71 @@ unsigned long long int CudaDevice::getPerfCounter() const
 }
 
 
-GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
-    absoluteStartTime_(std::chrono::high_resolution_clock::now()),
-    timeOfLastReset_(std::chrono::high_resolution_clock::now()),
-    gpu_(device),
-    prev_(0.0, 0, timeOfLastReset_),
-    curr_(prev_),
-    next_(prev_)
-{
-    // prev_ = curr_ = next_ = PowerAndPerfState(0.0, 0,);
-    sample();
-    sample();
-    std::cout << "DEBUG device state initialized succesfully" << std::endl;
-}
+// GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
+//     absoluteStartTime_(std::chrono::high_resolution_clock::now()),
+//     timeOfLastReset_(std::chrono::high_resolution_clock::now()),
+//     gpu_(device),
+//     prev_(0.0, 0, timeOfLastReset_),
+//     curr_(prev_),
+//     next_(prev_)
+// {
+//     // prev_ = curr_ = next_ = PowerAndPerfState(0.0, 0,);
+//     sample();
+//     sample();
+//     std::cout << "DEBUG device state initialized succesfully" << std::endl;
+// }
 
 
-GpuDeviceState& GpuDeviceState::sample()
-{
-    prev_ = curr_;
-    curr_ = next_;
+// GpuDeviceState& GpuDeviceState::sample()
+// {
+//     prev_ = curr_;
+//     curr_ = next_;
 
-    const auto kernelsCounter = gpu_->getPerfCounter();
+//     const auto kernelsCounter = gpu_->getPerfCounter();
 
-    next_ = PowerAndPerfState(
-        gpu_->getCurrentPowerInWatts(),
-        kernelsCounter,
-        std::chrono::high_resolution_clock::now());
+//     next_ = PowerAndPerfState(
+//         gpu_->getCurrentPowerInWatts(),
+//         kernelsCounter,
+//         std::chrono::high_resolution_clock::now());
 
-    auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
-    totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
-    return *this;
-}
+//     auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
+//     totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
+//     return *this;
+// }
 
-PowAndPerfResult GpuDeviceState::getCurrentPowerAndPerf(int deviceID) const
-{
-    double timeDeltaMilliSeconds = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
-    return PowAndPerfResult(
-        (double)(next_.kernelsCount_ - curr_.kernelsCount_),
-        timeDeltaMilliSeconds / 1000,
-        gpu_->getPowerLimitInWatts(),
-        next_.power_ * timeDeltaMilliSeconds / 1000, // Watts x seconds
-        next_.power_,
-        0.0, // memory power - not available for GPU
-        next_.power_ // TODO: this should be filtered power
-        );
-}
+// PowAndPerfResult GpuDeviceState::getCurrentPowerAndPerf(int deviceID) const
+// {
+//     double timeDeltaMilliSeconds = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
+//     return PowAndPerfResult(
+//         (double)(next_.kernelsCount_ - curr_.kernelsCount_),
+//         timeDeltaMilliSeconds / 1000,
+//         gpu_->getPowerLimitInWatts(),
+//         next_.power_ * timeDeltaMilliSeconds / 1000, // Watts x seconds
+//         next_.power_,
+//         0.0, // memory power - not available for GPU
+//         next_.power_ // TODO: this should be filtered power
+//         );
+// }
 
-double GpuDeviceState::getEnergySinceReset() const
-{
-    return totalEnergySinceReset_;
-}
+// double GpuDeviceState::getEnergySinceReset() const
+// {
+//     return totalEnergySinceReset_;
+// }
 
-void GpuDeviceState::resetState()
-{
-    timeOfLastReset_ = std::chrono::high_resolution_clock::now();
-    totalEnergySinceReset_ = 0.0;
-    gpu_->reset();
-    sample();
-    sample();
-}
+// void GpuDeviceState::resetState()
+// {
+//     timeOfLastReset_ = std::chrono::high_resolution_clock::now();
+//     totalEnergySinceReset_ = 0.0;
+//     gpu_->reset();
+//     sample();
+//     sample();
+// }
 
 
 GpuEco::GpuEco(int deviceID) : deviceID_(deviceID)
 {
     gpu_ = std::make_shared<CudaDevice>(deviceID);
-    deviceState_ = std::make_unique<GpuDeviceState>(gpu_);
+    deviceState_ = std::make_unique<DeviceStateAccumulator>(gpu_);
     std::tie(minPowerLimit_, maxPowerLimit_) = gpu_->getMinMaxLimitInWatts();
     defaultPowerLimitInWatts_ = gpu_->getPowerLimitInWatts();
     gpu_->reset();
@@ -305,7 +305,7 @@ void GpuEco::idleSample(int sleepPeriodInMs)
 {
     usleep(sleepPeriodInMs * 1000);
     deviceState_->sample();
-    auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
+    auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
     *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult);
     }
 
@@ -528,7 +528,7 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
     {
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
         *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult); // reference result is not relevant yet
         if (tmpResult.instructionsCount_ > 0)
         {
@@ -548,7 +548,7 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
 PowAndPerfResult GpuEco::getReferenceResult(const int referenceSampleTimeInMilliSec)
 {
     usleep(3 * referenceSampleTimeInMilliSec * 1000);
-    auto&& referenceResult = deviceState_->sample().getCurrentPowerAndPerf(deviceID_);
+    auto&& referenceResult = deviceState_->sample().getCurrentPowerAndPerf();
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
     *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), referenceResult, referenceResult);
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
@@ -568,7 +568,7 @@ int GpuEco::runTunningPhaseLS(
         gpu_->setPowerLimitInMicroWatts(limitInWatts * 10e6);
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
         *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
         // TODO: currently logCurrentResult function MUST be run before any isRightBetter() call as it actually evaluates
         //       the EDS metric. This dependency shall be removed.
@@ -614,7 +614,7 @@ int GpuEco::runTunningPhaseGSS(
             gpu_->setPowerLimitInMicroWatts(leftCandidateInMilliWatts * 10e3);
             usleep(samplingPeriodInMilliSec * 1000);
             deviceState_->sample();
-            fL = deviceState_->getCurrentPowerAndPerf(deviceID_);
+            fL = deviceState_->getCurrentPowerAndPerf();
             // std::cout << "measure left metric value " << fL.getInstrPerSecond() << std::endl;
         }
         *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fL, referenceResult);
@@ -624,7 +624,7 @@ int GpuEco::runTunningPhaseGSS(
             gpu_->setPowerLimitInMicroWatts(rightCandidateInMilliWatts * 10e3);
             usleep(samplingPeriodInMilliSec * 1000);
             deviceState_->sample();
-            fR = deviceState_->getCurrentPowerAndPerf(deviceID_);
+            fR = deviceState_->getCurrentPowerAndPerf();
             // std::cout << "measure right metric value" << fR.getEnergyPerInstr() << std::endl;
         }
         *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fR, referenceResult);
@@ -665,7 +665,7 @@ void GpuEco::executeWithPowercap(
     {
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
         *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
         waitpid(childPID, &status, WNOHANG);
     }       
