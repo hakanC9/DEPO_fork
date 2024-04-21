@@ -17,9 +17,20 @@
 #pragma once
 
 #include "Device.hpp"
-#include "../power_if/Rapl.hpp"
 
 using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
+
+struct PowerAndPerfState
+{
+    PowerAndPerfState() = delete;
+    PowerAndPerfState(double pow, unsigned long long ker, TimePoint t) :
+        power_(pow), kernelsCount_(ker), time_(t)
+    {
+    }
+    double power_;
+    unsigned long long kernelsCount_;
+    TimePoint time_;
+};
 
 class DeviceStateAccumulator {
 public:
@@ -38,7 +49,12 @@ public:
 
       returns the time difference between now and last Accumulator reset.
     */
-    double getTimeSinceReset() const;
+    template <class Resolution = std::chrono::milliseconds>
+    double getTimeSinceReset() const
+    {
+        return std::chrono::duration_cast<Resolution>(
+                    std::chrono::high_resolution_clock::now()  - timeOfLastReset_).count();
+    }
 
     /*
       getTimeSinceObjectCreation - used only for logging purposes.
@@ -57,13 +73,15 @@ public:
     // ----------------------------------------------------------------------------------------
     // std::vector<double> getTotalEnergyVec(Domain d);
 
-    void sample();
-    void resetDevice();
+    DeviceStateAccumulator& sample();
+    void resetState();
     double getCurrentPower(Domain d);
     double getPerfCounterSinceReset();
 
 private:
     TimePoint absoluteStartTime_;
+    TimePoint timeOfLastReset_;
     std::shared_ptr<IntelDevice> device_;
-    std::vector<Rapl> raplVec_;
+    PowerAndPerfState prev_, curr_, next_;
+    double totalEnergySinceReset_ {0.0};
 };

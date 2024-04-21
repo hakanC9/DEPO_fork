@@ -16,6 +16,17 @@
 
 #include "Rapl.hpp"
 
+
+AvailableRaplPowerDomains::AvailableRaplPowerDomains (bool p0, bool p1, bool d, bool ps, bool du) :
+    pp0_(p0), pp1_(p1), dram_(d), psys_(ps), fixedDramUnits_(du)
+{
+	availableDomainsSet_.insert(PowerCapDomain::PKG);
+	if (pp0_) availableDomainsSet_.insert(PowerCapDomain::PP0);
+	if (pp1_) availableDomainsSet_.insert(PowerCapDomain::PP1);
+	if (dram_) availableDomainsSet_.insert(PowerCapDomain::DRAM);
+}
+
+
 void RaplStateSequence::rotateStates() {
 	RaplState tmp = previous_;
     previous_ = current_;
@@ -32,7 +43,8 @@ void RaplStateSequence::reset() {
 	previous_ = current_ = next_ = emptyState;
 }
 
-uint64_t RaplStateSequence::energyDelta(uint64_t before, uint64_t after) {
+uint64_t RaplStateSequence::energyDelta(uint64_t before, uint64_t after) const
+{
     if (before > after) {
 		// Check for overflow
         constexpr uint64_t MAX_INT = ~((uint32_t) 0);
@@ -53,7 +65,8 @@ double RaplStateSequence::getTotalTime(TimePoint startTime) const
 	return timeDelta(startTime, current_.timeSec_);
 }
 
-RaplState RaplStateSequence::getCurrentEnergyIncrement() {
+RaplState RaplStateSequence::getCurrentEnergyIncrement() const
+{
     return RaplState(energyDelta(current_.pkg_, next_.pkg_),
 	                 energyDelta(current_.pp0_, next_.pp0_),
 					 energyDelta(current_.pp1_, next_.pp1_),
@@ -61,7 +74,8 @@ RaplState RaplStateSequence::getCurrentEnergyIncrement() {
 					 std::chrono::high_resolution_clock::now()); // probably does not matter
 }
 
-RaplState RaplStateSequence::getPreviousEnergyIncrement() {
+RaplState RaplStateSequence::getPreviousEnergyIncrement() const
+{
     return RaplState(energyDelta(previous_.pkg_, current_.pkg_),
 	                 energyDelta(previous_.pp0_, current_.pp0_),
 					 energyDelta(previous_.pp1_, current_.pp1_),
@@ -69,11 +83,13 @@ RaplState RaplStateSequence::getPreviousEnergyIncrement() {
 					 std::chrono::high_resolution_clock::now()); // probably does not matter
 }
 
-double RaplStateSequence::getCurrentTimeIncrement() {
+double RaplStateSequence::getCurrentTimeIncrement() const
+{
 	return timeDelta(current_.timeSec_, next_.timeSec_);
 }
 
-double RaplStateSequence::getPreviousTimeIncrement() {
+double RaplStateSequence::getPreviousTimeIncrement() const
+{
 	return timeDelta(previous_.timeSec_, current_.timeSec_);
 }
 
@@ -85,11 +101,10 @@ RaplState& operator+=(RaplState& left, const RaplState& right) {
 	return left;
 }
 
-void Rapl::someCommonCode() {
+void Rapl::initializeRaplForPowerReadingAndCapping()
+{
     MSR msr(cpuCore_);
-    if (msr.checkLockedByBIOS()) {
-		return; // FIXME: this should not return here - when locked by bios it is possible to read power from rapl, one only cannot limit the power
-	}
+
     power_units  = msr.getUnits(Quantity::Power);
     energy_units = msr.getUnits(Quantity::Energy);
     time_units   = msr.getUnits(Quantity::Time);
@@ -107,16 +122,22 @@ void Rapl::someCommonCode() {
     printf("\t\tPackage maximum power: %.3fW\n", powerInfo.maxPower);
     printf("\t\tPackage maximum time window: %.6fs\n", powerInfo.maxTimeWindow);
 
+    if (msr.checkLockedByBIOS())
+    {
+        std::cout << "[INFO] When locked by BIOS it is possible to read power from RAPL but you cannot limit the power." << std::endl;
+		return;
+	}
     msr.enableClamping(Domain::PKG);
     msr.enablePowerCapping(Domain::PKG);
     msr.disableClamping(Domain::PP0);
     msr.disableClamping(Domain::PP0);
+
 }
 
-Rapl::Rapl(int core, AvailablePowerDomains avDom) :
+Rapl::Rapl(int core, AvailableRaplPowerDomains avDom) :
     cpuCore_(core), availableDomains_(avDom)
 {
-    someCommonCode();
+    initializeRaplForPowerReadingAndCapping();
     reset();
 }
 
@@ -144,45 +165,54 @@ void Rapl::sample() {
 	rss_.rotateStates();
 }
 
-double Rapl::power(uint64_t energyIncrement, double time_delta, double units) {
+double Rapl::calculate_power(uint64_t energyIncrement, double time_delta, double units) const
+{
     if (time_delta == 0.0f || time_delta == -0.0f) { return 0.0; }
     double energy = units * ((double) energyIncrement);
     return energy / time_delta;
 }
 
-double Rapl::pkg_current_power() {
+double Rapl::pkg_current_power() const
+{
     double t = rss_.getPreviousTimeIncrement();
-    return power(rss_.getPreviousEnergyIncrement().pkg_, t, energy_units);
+    return calculate_power(rss_.getPreviousEnergyIncrement().pkg_, t, energy_units);
 }
 
-double Rapl::pp0_current_power() {
+double Rapl::pp0_current_power() const
+{
     double t = rss_.getPreviousTimeIncrement();
-    return power(rss_.getPreviousEnergyIncrement().pp0_, t, energy_units);
+    return calculate_power(rss_.getPreviousEnergyIncrement().pp0_, t, energy_units);
 }
 
-double Rapl::pp1_current_power() {
+double Rapl::pp1_current_power() const
+{
     double t = rss_.getPreviousTimeIncrement();
-    return power(rss_.getPreviousEnergyIncrement().pp1_, t, energy_units);
+    return calculate_power(rss_.getPreviousEnergyIncrement().pp1_, t, energy_units);
 }
 
-double Rapl::dram_current_power() {
+double Rapl::dram_current_power() const
+{
     double t = rss_.getPreviousTimeIncrement();
-    return power(rss_.getPreviousEnergyIncrement().dram_, t, dram_energy_units);
+    return calculate_power(rss_.getPreviousEnergyIncrement().dram_, t, dram_energy_units);
 }
 
-double Rapl::pkg_average_power() {
+double Rapl::pkg_average_power() const
+{
     return pkg_total_energy() / get_total_time();
 }
 
-double Rapl::pp0_average_power() {
+double Rapl::pp0_average_power() const
+{
     return pp0_total_energy() / get_total_time();
 }
 
-double Rapl::pp1_average_power() {
+double Rapl::pp1_average_power() const
+{
     return pp1_total_energy() / get_total_time();
 }
 
-double Rapl::dram_average_power() {
+double Rapl::dram_average_power() const
+{
     return dram_total_energy() / get_total_time();
 }
 
@@ -215,7 +245,8 @@ double Rapl::current_time() {
     return rss_.getTotalTime(totalResultSinceLastReset_.timeSec_);
 }
 
-double Rapl::pkg_max_power() {
+double Rapl::pkg_max_power() const
+{
     auto&& pkgPowerInfo = MSR(cpuCore_).getPowerInfoForPKG();
     auto&& maxPower = pkgPowerInfo.maxPower;
     return maxPower ? maxPower : pkgPowerInfo.thermalDesignPower;
@@ -231,7 +262,8 @@ EnergyCrossDomains Rapl::getTotalEnergy() const
     return result;
 }
 
-PowerCrossDomains Rapl::getAveragePower() {
+PowerCrossDomains Rapl::getAveragePower() const
+{
     EnergyCrossDomains result;
     result[Domain::PKG] = pkg_average_power();
     result[Domain::PP0] = pp0_average_power();
@@ -240,7 +272,8 @@ PowerCrossDomains Rapl::getAveragePower() {
     return result;
 }
 
-PowerCrossDomains Rapl::getCurrentPower() {
+PowerCrossDomains Rapl::getCurrentPower() const
+{
     EnergyCrossDomains result;
     result[Domain::PKG] = pkg_current_power();
     result[Domain::PP0] = pp0_current_power();

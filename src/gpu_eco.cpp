@@ -227,7 +227,7 @@ GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
     curr_(prev_),
     next_(prev_)
 {
-    // prev_ = curr_ = next_ = NvidiaState(0.0, 0,);
+    // prev_ = curr_ = next_ = PowerAndPerfState(0.0, 0,);
     sample();
     sample();
     std::cout << "DEBUG device state initialized succesfully" << std::endl;
@@ -240,7 +240,7 @@ GpuDeviceState& GpuDeviceState::sample()
 
     const auto kernelsCounter = gpu_->getPerfCounter();
 
-    next_ = NvidiaState(
+    next_ = PowerAndPerfState(
         gpu_->getCurrentPowerInWattsForDeviceID(),
         kernelsCounter,
         std::chrono::high_resolution_clock::now());

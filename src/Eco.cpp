@@ -159,7 +159,7 @@ void Eco::checkIdlePowerConsumption() {
     }
     std::cout << FLUSH_AND_RETURN;
     // TODO: assign structure object, not each element separately
-    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
 
     idleAvPow_[Domain::PKG] = devStateGlobal_.getEnergySinceReset(Domain::PKG) / totalTimeInSeconds;
     idleAvPow_[Domain::PP0] = devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds;
@@ -174,7 +174,7 @@ void Eco::checkIdlePowerConsumption() {
 }
 
 void Eco::singleAppRunAndPowerSample(char* const* argv) {
-    devStateGlobal_.resetDevice();
+    devStateGlobal_.resetState();
 
     int fd = open("EP_stdout.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
     if (fd < 0) { perror("open"); abort(); }
@@ -223,7 +223,7 @@ void Eco::localPowerSample(int usPeriod) {
 }
 
 PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
-    devStateLocal_.resetDevice();
+    devStateLocal_.resetState();
     localPowerSample(usPeriod);
     double timeInSeconds = (double)usPeriod / 10e6;
     double energyInJoules = devStateLocal_.getEnergySinceReset(Domain::PKG);
@@ -274,7 +274,7 @@ void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b) {
 
 void Eco::reportResult(double waitTime, double testTime) {
     auto&& totalE = devStateGlobal_.getEnergySinceReset(Domain::PKG);
-    auto&& totalTime = devStateGlobal_.getTimeSinceReset();
+    auto&& totalTime = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
     std::cout << "Total E: " << totalE;
     // ----------------------------------------------------------------------------------------
     // Below code is temporary disabled as it uses method specific to some
@@ -337,6 +337,8 @@ int Eco::testPhase(
                                                       highLimit_uW,
                                                       lowLimit_uW,
                                                       metric);
+        default:
+            return highLimit_uW;
     }
 }
 
@@ -462,7 +464,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
     if (fd < 0) { perror("open"); abort(); }
     // ----------------------------------------------------------------------------
 
-    devStateGlobal_.resetDevice();
+    devStateGlobal_.resetState();
 
     double waitTime = 0.0, testTime = 0.0;
     pid_t childProcId = fork();
@@ -502,7 +504,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         // return 1;
     }
     reportResult(waitTime, testTime);
-    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
 
     return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(),
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG),
@@ -519,7 +521,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
 FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
     singleAppRunAndPowerSample(argv);
     reportResult();
-    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
 
     return FinalPowerAndPerfResult(device_->getDeviceMaxPowerInWatts(),
                                 devStateGlobal_.getEnergySinceReset(Domain::PKG),

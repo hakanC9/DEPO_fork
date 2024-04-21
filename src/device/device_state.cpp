@@ -20,37 +20,61 @@
 
 DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<IntelDevice> d) :
     absoluteStartTime_(std::chrono::high_resolution_clock::now()),
-    device_(d)
+    timeOfLastReset_(std::chrono::high_resolution_clock::now()),
+    device_(d),
+    prev_(0.0, 0, timeOfLastReset_),
+    curr_(prev_),
+    next_(prev_)
 {
-    for (auto&& cpuCore : device_->getPkgToFirstCoreMap())
-    {
-        raplVec_.emplace_back(cpuCore, device_->getAvailablePowerDomains());
-        std::cout << "INFO: created RAPL object for core " << cpuCore << " in DeviceStateAccumulator.\n";
-    }
+    std::cout << "[DEBUG] DeviveStateAccumulator constructor called!" << std::endl;
 }
 
-void DeviceStateAccumulator::resetDevice() {
-    for (auto&& rapl : raplVec_)
-    {
-        rapl.reset();
-    }
-    device_->resetPerfCounters();
+void DeviceStateAccumulator::resetState()
+{
+    device_->resetPerfCountersAndRaplPkgs();
+    timeOfLastReset_ = std::chrono::high_resolution_clock::now();
+    totalEnergySinceReset_ = 0.0;
+    sample();
+    sample();
 }
 
-void DeviceStateAccumulator::sample() {
-    for (auto&& rapl : raplVec_)
-    {
-        rapl.sample();
-    }
+DeviceStateAccumulator& DeviceStateAccumulator::sample()
+{
+    prev_ = curr_;
+    curr_ = next_;
+    // ------------------------------------------------------------------
+    // this is specific to Intel RAPL power/energy measurements
+    // in order to have any valid readings, RAPL must be sampled
+    // preety frequently so that the energy counter reading is updated
+    // before the couter overflow.
+    device_->triggerRaplSample();
+    // for other devices like NVIDIA it is handled by the API (e.g., NVML)
+    // ------------------------------------------------------------------
+    const auto  perfCounter = device_->getPerfCounter();
+
+    next_ = PowerAndPerfState(
+        device_->getCurrentPowerInWattsForDeviceID(),
+        perfCounter,
+        std::chrono::high_resolution_clock::now());
+
+    auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
+    totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
+    return *this;
+
+    // for (auto&& rapl : raplVec_)
+    // {
+    //     rapl.sample();
+    // }
 }
 
 double DeviceStateAccumulator::getCurrentPower(Domain d) {
-    double result = 0.0;
-    for (auto&& rapl : raplVec_)
-    {
-        result += rapl.getCurrentPower()[d];
-    }
-    return result;
+    // double result = 0.0;
+    // for (auto&& rapl : raplVec_)
+    // {
+    //     result += rapl.getCurrentPower()[d];
+    // }
+    return device_->getCurrentPowerInWattsForDeviceID();
+
 }
 
 double DeviceStateAccumulator::getPerfCounterSinceReset()
@@ -58,22 +82,22 @@ double DeviceStateAccumulator::getPerfCounterSinceReset()
     return device_->getNumInstructionsSinceReset();
 }
 
-double DeviceStateAccumulator::getTimeSinceReset() const
-{
-    std::set<double> timeSet;
-    for (auto&& rapl : raplVec_) {
-        timeSet.insert(rapl.get_total_time());
-    }
-    return *timeSet.rbegin(); // set is sorted containter
-}
+// double DeviceStateAccumulator::getTimeSinceReset() const
+// {
+//     std::set<double> timeSet;
+//     for (auto&& rapl : raplVec_) {
+//         timeSet.insert(rapl.get_total_time());
+//     }
+//     return *timeSet.rbegin(); // set is sorted containter
+// }
 
 double DeviceStateAccumulator::getEnergySinceReset(Domain d) const
 {
-    double result = 0.0;
-    for (auto&& rapl : raplVec_) {
-        result += rapl.getTotalEnergy()[d];
-    }
-    return result;
+    // double result = 0.0;
+    // for (auto&& rapl : raplVec_) {
+    //     result += rapl.getTotalEnergy()[d];
+    // }
+    return totalEnergySinceReset_;
 }
 
 // Temporary disabled

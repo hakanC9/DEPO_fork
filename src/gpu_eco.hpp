@@ -36,6 +36,7 @@
 #include "helpers/both_stream.hpp"
 #include "helpers/power_and_perf_result.hpp"
 #include "helpers/log.hpp"
+#include "device/device_state.hpp"
 
 #include <cuda.h>
 #include <nvml.h>
@@ -63,19 +64,6 @@ class CudaDevice // this class should be named "cuda device container or sth lik
     std::vector<nvmlDevice_t> deviceHandles_;
 };
 
-using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
-
-struct NvidiaState
-{
-    NvidiaState() = delete;
-    NvidiaState(double pow, unsigned long long ker, TimePoint t) :
-        power_(pow), kernelsCount_(ker), time_(t)
-    {
-    }
-    double power_;
-    unsigned long long kernelsCount_;
-    TimePoint time_;
-};
 
 class GpuDeviceState
 {
@@ -133,7 +121,7 @@ class GpuDeviceState
     TimePoint absoluteStartTime_;
     TimePoint timeOfLastReset_;
     std::shared_ptr<CudaDevice> gpu_;
-    NvidiaState prev_, curr_, next_;
+    PowerAndPerfState prev_, curr_, next_;
     double totalEnergySinceReset_ {0.0};
 };
 

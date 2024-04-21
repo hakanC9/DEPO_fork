@@ -54,17 +54,6 @@ static inline void writeLimitToFile (std::string fileName, int limit) {
     outfile.close();
 }
 
-
-
-AvailablePowerDomains::AvailablePowerDomains (bool p0, bool p1, bool d, bool ps, bool du) :
-    pp0_(p0), pp1_(p1), dram_(d), psys_(ps), fixedDramUnits_(du)
-{
-	availableDomainsSet_.insert(PowerCapDomain::PKG);
-	if (pp0_) availableDomainsSet_.insert(PowerCapDomain::PP0);
-	if (pp1_) availableDomainsSet_.insert(PowerCapDomain::PP1);
-	if (dram_) availableDomainsSet_.insert(PowerCapDomain::DRAM);
-}
-
 IntelDevice::IntelDevice()
 {
     std::cout << "INFO: Device constructor called!\n";
@@ -74,6 +63,16 @@ IntelDevice::IntelDevice()
 	prepareRaplDirsFromAvailableDomains();
 	readAndStoreDefaultLimits();
 	initPerformanceCounters();
+    initRaplObjectsForEachPKG();
+}
+
+void IntelDevice::initRaplObjectsForEachPKG()
+{
+    for (auto&& cpuCore : this->getPkgToFirstCoreMap())
+    {
+        raplVec_.emplace_back(cpuCore, this->getAvailablePowerDomains());
+        std::cout << "INFO: created RAPL object for core " << cpuCore << " in DeviceStateAccumulator.\n";
+    }
 }
 
 int IntelDevice::getDeviceMaxPowerInWatts() const
@@ -96,7 +95,7 @@ std::string IntelDevice::getName() const
     return mapCpuFamilyName(model_);
 }
 
-AvailablePowerDomains IntelDevice::getAvailablePowerDomains() {
+AvailableRaplPowerDomains IntelDevice::getAvailablePowerDomains() {
     return devicePowerProfile_;
 }
 
@@ -242,24 +241,24 @@ void IntelDevice::detectPowerCapsAvailability() {
 
 		case CPU_SANDYBRIDGE_EP:
 		case CPU_IVYBRIDGE_EP:
-			devicePowerProfile_ = AvailablePowerDomains(true, false, true, false, false);
+			devicePowerProfile_ = AvailableRaplPowerDomains(true, false, true, false, false);
 			break;
 
 		case CPU_HASWELL_EP:
 		case CPU_BROADWELL_EP: // according to real system (PC Xeon E5) there is no PP0
 		case CPU_ICELAKE_SP: // verified with real system
 		case CPU_SKYLAKE_X: // TODO: To be checked on Skylake X if possible.
-			devicePowerProfile_ = AvailablePowerDomains(false, false, true, false, true);
+			devicePowerProfile_ = AvailableRaplPowerDomains(false, false, true, false, true);
 			break;
 
 		case CPU_KNIGHTS_LANDING:
 		case CPU_KNIGHTS_MILL:
-			devicePowerProfile_ = AvailablePowerDomains(false, false, true, false, true);
+			devicePowerProfile_ = AvailableRaplPowerDomains(false, false, true, false, true);
 			break;
 
 		case CPU_SANDYBRIDGE:
 		case CPU_IVYBRIDGE:
-			devicePowerProfile_ = AvailablePowerDomains(true, true, false, false, false);
+			devicePowerProfile_ = AvailableRaplPowerDomains(true, true, false, false, false);
 			break;
 
 		case CPU_HASWELL:
@@ -270,7 +269,7 @@ void IntelDevice::detectPowerCapsAvailability() {
 		case CPU_ATOM_GOLDMONT:
 		case CPU_ATOM_GEMINI_LAKE:
 		case CPU_ATOM_DENVERTON:
-			devicePowerProfile_ = AvailablePowerDomains(true, true, true, false, false);
+			devicePowerProfile_ = AvailableRaplPowerDomains(true, true, true, false, false);
 			break;
 
 		case CPU_SKYLAKE:
@@ -278,7 +277,7 @@ void IntelDevice::detectPowerCapsAvailability() {
 		case CPU_KABYLAKE: // TODO: confirm below settings with some doc. Actually des19 (KabyLake) has PKG/PP0/DRAM
 						   //       and does not support PP1. No info about PSys either.
 		case CPU_KABYLAKE_MOBILE:
-			devicePowerProfile_ = AvailablePowerDomains(true, false, true, true, false);
+			devicePowerProfile_ = AvailableRaplPowerDomains(true, false, true, true, false);
 			break;
 	}
 }
@@ -453,13 +452,38 @@ void IntelDevice::initPerformanceCounters()
     }
 }
 
-void IntelDevice::resetPerfCounters()
+double IntelDevice::getCurrentPowerInWattsForDeviceID() const // this method shall have the input parameter "deviceID" back
 {
+    double result = 0.0;
+    for (auto&& rapl : raplVec_)
+    {
+        result += rapl.getCurrentPower()[Domain::PKG];
+    }
+    return result;
+}
+
+
+void IntelDevice::resetPerfCountersAndRaplPkgs()
+{
+    for (auto&& rapl : raplVec_)
+    {
+        rapl.reset();
+    }
+    std::vector<pcm::SocketCounterState> dummySocketStates_;
+
     pcm_->getAllCounterStates(sysBeforeState_, dummySocketStates_, beforeState_);
 }
 
-double IntelDevice::getNumInstructionsSinceReset()
+double IntelDevice::getNumInstructionsSinceReset() const
 {
+    pcm::SystemCounterState sysAfterState_;
+    std::vector<pcm::CoreCounterState> afterState_;
+    std::vector<pcm::SocketCounterState> dummySocketStates_;
     pcm_->getAllCounterStates(sysAfterState_, dummySocketStates_, afterState_);
 	return (double)getInstructionsRetired(sysBeforeState_, sysAfterState_)/1000000;
+}
+
+unsigned long long int IntelDevice::getPerfCounter() const
+{
+    return (unsigned long long) this->getNumInstructionsSinceReset();
 }
