@@ -52,14 +52,15 @@ public:
     Device() {}
     virtual ~Device() = default;
     virtual std::string getName() const = 0;
-    virtual void restoreDefaults() = 0;
-    virtual int getDeviceMaxPowerInWatts() const = 0;
+    // virtual void restoreDefaults() = 0;
+    // virtual int getDeviceMaxPowerInWatts() const = 0;
+    virtual std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const = 0;
     virtual double getPowerLimitInWatts() const = 0;
-    virtual void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG) = 0;
-    virtual RaplDefaults getDefaultCaps() const = 0; // TODO: remove dependency on RAPL
+    virtual void setPowerLimitInMicroWatts(unsigned long limitInMicroW) = 0;
+    // virtual RaplDefaults getDefaultCaps() const = 0; // TODO: remove dependency on RAPL
     virtual void reset() = 0;
     virtual unsigned long long int getPerfCounter() const = 0;
-    virtual double getCurrentPowerInWattsForDeviceID() const = 0;
+    virtual double getCurrentPowerInWatts() const = 0;
     /*
       triggerPowerApiSample - used to trigger next sample from Power Management API
 
@@ -82,22 +83,23 @@ public:
     virtual ~IntelDevice() = default;
 
     double getPowerLimitInWatts() const override;
-    void setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain = PowerCapDomain::PKG) override;
+    void setPowerLimitInMicroWatts(unsigned long limitInMicroW) override;
     std::string getName() const override;
     void reset() override;
-    double getCurrentPowerInWattsForDeviceID() const override;
+    double getCurrentPowerInWatts() const override;
     void triggerPowerApiSample() override;
-
     unsigned long long int getPerfCounter() const override;
+
     /*
-      getDeviceMaxPowerInWatts - used to determine the available power limits range
+      getMinMaxLimitInWatts - used to determine the available power limits range
 
       returns the maximal available power limit in Watts. For the CPU it assumes that the
       limit is identical to the default power cap. More details in the method's definition.
+      For Intel CPU it returns 0 as minimal value. In the future it might be fixed.
     */
-    int getDeviceMaxPowerInWatts() const override;
-    void restoreDefaults() override;
-    RaplDefaults getDefaultCaps() const override;
+    std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const override;
+    void restoreDefaults();
+    RaplDefaults getDefaultCaps() const;
     AvailableRaplPowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
     double getNumInstructionsSinceReset() const;

@@ -56,7 +56,7 @@ static inline void writeLimitToFile (std::string fileName, int limit) {
 
 IntelDevice::IntelDevice()
 {
-    std::cout << "INFO: Device constructor called!\n";
+    std::cout << "[DEBUG]: IntelDevice constructor called!\n";
     detectCPU();
     detectPackages();
     detectPowerCapsAvailability();
@@ -75,7 +75,7 @@ void IntelDevice::initRaplObjectsForEachPKG()
     }
 }
 
-int IntelDevice::getDeviceMaxPowerInWatts() const
+std::pair<unsigned, unsigned> IntelDevice::getMinMaxLimitInWatts() const
 {
     // This method assumes that the max power in Intel CPUs is identical to a default
     // power cap, which is generally true but the proper information about the max
@@ -87,7 +87,10 @@ int IntelDevice::getDeviceMaxPowerInWatts() const
     // allowing for occasional power consumption spikes so maybe for other type of
     // research the actual max available power will be more useful. It needs to be noted
     // that CPU working above TDP would require much more cooling and would throttle much faster.
-    return (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000;
+    //
+    // For MIN power it returns 0 as it does not matter at the moment for CPU.
+    // CPU power and performance optimization is relative to idle power consumption measured in ECO class.
+    return std::make_pair(0, (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000);
 }
 
 std::string IntelDevice::getName() const
@@ -391,8 +394,11 @@ double IntelDevice::getPowerLimitInWatts() const
 	return currentPowerLimitInWatts_;
 }
 
-void IntelDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW, Domain dom)
+void IntelDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW)
 {
+    Domain dom = PowerCapDomain::PKG; // TODO: the domain is hardcoded so that it can fit generic API for CPU and GPU
+                                      //       It should be considered to drop support for PP0, PP1 domains and to
+                                      //       have separet API for DRAM domain.
     auto&& numPkgs = totalPackages_; // packagesDirs_.size();
     auto singlePKGcap = limitInMicroW / numPkgs;
     switch (dom) {
@@ -452,7 +458,7 @@ void IntelDevice::initPerformanceCounters()
     }
 }
 
-double IntelDevice::getCurrentPowerInWattsForDeviceID() const // this method shall have the input parameter "deviceID" back
+double IntelDevice::getCurrentPowerInWatts() const // this method shall have the input parameter "deviceID" back
 {
     double result = 0.0;
     for (auto&& rapl : raplVec_)

@@ -37,24 +37,40 @@
 #include "helpers/power_and_perf_result.hpp"
 #include "helpers/log.hpp"
 #include "device/device_state.hpp"
+#include "device/Device.hpp"
 
 #include <cuda.h>
 #include <nvml.h>
 
 
-class CudaDevice // this class should be named "cuda device container or sth like that as it stores all the devices"
+/**
+ * This class represents single CUDA device pointed by the deviceID
+ * during object construction. However, it stores all the device handles
+ * and it is able to read power or write power limit to any existing
+ * in the system CUDA device.
+ * By design at the moment the get/set power methods use only deviceID_
+ * which is a member of the object.
+ *
+ * FUTURE WORK:
+ * In the future this may change when, e.g., DEPO or StEP would consider
+ * multi-gpu support.
+*/
+class CudaDevice : public Device
 {
   public:
     CudaDevice(int devID = 0);
 
-    double getPowerLimitInWatts(unsigned deviceID) const;
-    void setPowerLimitInMicroWatts(unsigned deviceID, unsigned long limitInMicroW);
-    std::string getName(unsigned deviceID) const;
+    double getPowerLimitInWatts() const override;
+    void setPowerLimitInMicroWatts(unsigned long limitInMicroW) override;
+    std::string getName() const override;
 
-    std::pair<unsigned, unsigned> getMinMaxLimitInWatts(unsigned deviceID);
-    void resetKernelCounterRegister();
-    double getCurrentPowerInWattsForDeviceID(); // this method shall have the input parameter "deviceID" back
+    std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const override;
+    void reset() override;
+    double getCurrentPowerInWatts() const override;
     unsigned long long int getPerfCounter() const;
+    void triggerPowerApiSample() override {}; // empty method since, NVIDIA GPU does not need to explicit trigger API sampling
+
+
 
   private:
     void initDeviceHandles();
@@ -139,7 +155,7 @@ class GpuEco : public EcoApi
         SearchType searchType,
         int argc) override;
     void plotPowerLog() override;
-    std::string getDeviceName() const override { return gpu_->getName(deviceID_); }
+    std::string getDeviceName() const override { return gpu_->getName(); }
 
     void staticEnergyProfiler(char* const* argv, int argc, BothStream& stream);
 

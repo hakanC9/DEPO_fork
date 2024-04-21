@@ -117,6 +117,7 @@ class Eco : public EcoApi
 
     WatchdogStatus defaultWatchdog;
     std::ofstream outPowerFile;
+    double defaultPowerLimitInWatts_; // PKG domain power limit
 
     void storeDataPointToFilters(double);
     double getFilteredPower();
