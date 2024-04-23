@@ -1,0 +1,657 @@
+@startuml
+
+/' Objects '/
+
+/'
+class BothStream {
+	+BothStream(std::ofstream& f)
+	+~BothStream()
+	+flush() : BothStream&
+	+operator<<(const T& obj) : BothStream&
+	-fstr_ : std::ofstream
+}
+
+
+class CompareFinalResultsForMinE {
+	+operator()(FinalPowerAndPerfResult& left, FinalPowerAndPerfResult& right) : bool {query}
+}
+
+
+class CompareFinalResultsForMinEt {
+	+operator()(FinalPowerAndPerfResult& left, FinalPowerAndPerfResult& right) : bool {query}
+}
+
+
+class CompareFinalResultsForMplus {
+	+operator()(FinalPowerAndPerfResult& left, FinalPowerAndPerfResult& right) : bool {query}
+}
+
+'/
+class CudaDevice {
+	+CudaDevice(int devID)
+	+getCurrentPowerInWatts() : double {query}
+	+getPowerLimitInWatts() : double {query}
+	-deviceID_ : int
+	-nvResult_ : nvmlReturn_t
+	+getMinMaxLimitInWatts() : std::pair<unsigned , unsigned> {query}
+	+getName() : std::string {query}
+	-deviceHandles_ : std::vector<nvmlDevice_t>
+	+getPerfCounter() : unsigned long long int {query}
+	-initDeviceHandles() : void
+	+reset() : void
+	+setPowerLimitInMicroWatts(unsigned long limitInMicroW) : void
+	+triggerPowerApiSample() : void
+}
+
+/'
+class DataFilter {
+	+DataFilter(int size)
+	+getCleanedRelativeError() : double
+	+getRelativeError() : double
+	+getSMA() : double
+	-getSum() : double
+	-data_ : std::vector<double>
+	-filterSize_ : unsigned
+	-shiftActiveIndex() : void
+	+storeDataPoint(double dataPoint) : void
+}
+'/
+
+abstract class Device {
+	+Device()
+	+~Device()
+	+{abstract} getCurrentPowerInWatts() : double {query}
+	+{abstract} getPowerLimitInWatts() : double {query}
+	+{abstract} getMinMaxLimitInWatts() : std::pair<unsigned , unsigned> {query}
+	+{abstract} getName() : std::string {query}
+	+{abstract} getPerfCounter() : unsigned long long int {query}
+	+{abstract} reset() : void
+	+{abstract} setPowerLimitInMicroWatts(unsigned long limitInMicroW) : void
+	+{abstract} triggerPowerApiSample() : void
+}
+
+
+class DeviceStateAccumulator {
+	+DeviceStateAccumulator(std::shared_ptr<Device>)
+	+~DeviceStateAccumulator()
+	+sample() : DeviceStateAccumulator&
+	+getCurrentPowerAndPerf() : PowAndPerfResult {query}
+	-curr_ : PowerAndPerfState
+	-next_ : PowerAndPerfState
+	-prev_ : PowerAndPerfState
+	+getCurrentPower(Domain d) : double
+	+getEnergySinceReset() : double {query}
+	+getPerfCounterSinceReset() : double
+	+getTimeSinceObjectCreation() : double {query}
+	+getTimeSinceReset() : double {query}
+	-device_ : std::shared_ptr<Device>
+	-absoluteStartTime_ : time_point<std::chrono::high_resolution_clock>
+	-timeOfLastReset_ : time_point<std::chrono::high_resolution_clock>
+	+resetState() : void
+}
+
+
+class Eco {
+	+Eco(std::shared_ptr<IntelDevice>)
+	+~Eco()
+	-idleAvPow_ : CrossDomainQuantity
+	-filter2order_ : DataFilter
+	-devStateGlobal_ : DeviceStateAccumulator
+	-devStateLocal_ : DeviceStateAccumulator
+	-multipleAppRunAndPowerSample(char* const*, int) : FinalPowerAndPerfResult
+	+runAppWithSampling(char* const*, int) : FinalPowerAndPerfResult
+	+runAppWithSearch(char* const*, TargetMetric, SearchType, int) : FinalPowerAndPerfResult
+	-checkPowerAndPerformance(int) : PowAndPerfResult
+	-setCapAndMeasure(int, int) : PowAndPerfResult
+	-defaultWatchdog : WatchdogStatus
+	-readWatchdog() : WatchdogStatus
+	-defaultPowerLimitInWatts_ : double
+	-getFilteredPower() : double
+	-goldenSectionSearchForBestPowerCap(PowAndPerfResult &, int &, int &, TargetMetric) : int
+	-linearSearchForBestPowerCap(PowAndPerfResult &, int &, int &, TargetMetric) : int
+	-testPhase(int &, int &, TargetMetric, SearchType, PowAndPerfResult &) : int
+	-adjustHighPowLimit(PowAndPerfResult, int &) : int&
+	-smaFilters_ : std::map<FilterType, DataFilter>
+	-outPowerFile : std::ofstream
+	-device_ : std::shared_ptr<Device>
+	-generateUniqueResultDir() : std::string
+	+getDeviceName() : std::string {query}
+	-fullAppRunResultsContainer_ : std::vector<FinalPowerAndPerfResult>
+	-generateVecOfPowerCaps(Domain) : std::vector<int>
+	-checkIdlePowerConsumption() : void
+	-execPhase(int, int &, int, PowAndPerfResult &) : void
+	+idleSample(int idleTimeS) : void
+	-justSample(int timeS) : void
+	-localPowerSample(int) : void
+	-mainAppProcess(char* const*, int &) : void
+	-modifyWatchdog(WatchdogStatus) : void
+	+plotPowerLog() : void
+	-raplSample() : void
+	+referenceRunWithoutCaps(char* const*) : void
+	-reportResult(double, double) : void
+	+runAppForEachPowercap(char* const*, BothStream &, Domain) : void
+	-singleAppRunAndPowerSample(char* const*) : void
+	+staticEnergyProfiler(char* const* argv, BothStream& stream) : void
+	-storeDataPointToFilters(double) : void
+	+storeReferenceRun(FinalPowerAndPerfResult &) : void
+	-waitPhase(int &, int) : void
+}
+
+
+abstract class EcoApi {
+	+EcoApi()
+	+~EcoApi()
+	+{abstract} runAppWithSampling(char* const*, int) : FinalPowerAndPerfResult
+	+{abstract} runAppWithSearch(char* const*, TargetMetric, SearchType, int) : FinalPowerAndPerfResult
+	#cfg_ : ParamsConfig
+	+getK() : double
+	+getNumIterations() : int
+	+{abstract} getDeviceName() : std::string {query}
+	+getPowerLogFileName() : std::string {query}
+	+getResultFileName() : std::string {query}
+	#outPowerFileName_ : std::string
+	#outResultFileName_ : std::string
+	+{abstract} idleSample(int) : void
+	+{abstract} plotPowerLog() : void
+	+setCustomK(double k) : void
+}
+
+
+class GpuEco {
+	+GpuEco(int deviceID)
+	+~GpuEco()
+	+runAppWithSampling(char* const* argv, int argc) : FinalPowerAndPerfResult
+	+runAppWithSearch(char* const* argv, TargetMetric metric, SearchType searchType, int argc) : FinalPowerAndPerfResult
+	+getReferenceResult(const int referenceSampleTimeInMilliSec) : PowAndPerfResult
+	-defaultPowerLimitInWatts_ : double
+	-deviceID_ : int
+	+runTunningPhaseGSS(int& status, int samplingPeriodInMilliSec, const PowAndPerfResult& referenceResult, TargetMetric metric) : int
+	+runTunningPhaseLS(int& status, int samplingPeriodInMilliSec, const PowAndPerfResult& referenceResult, TargetMetric metric) : int
+	-outPowerFile_ : std::ofstream
+	-gpu_ : std::shared_ptr<CudaDevice>
+	+getDeviceName() : std::string {query}
+	+outPowerFileName_ : std::string
+	-bout_ : std::unique_ptr<BothStream>
+	-deviceState_ : std::unique_ptr<DeviceStateAccumulator>
+	-maxPowerLimit_ : unsigned
+	-minPowerLimit_ : unsigned
+	+executeWithPowercap(int& status, unsigned powercapInWatts, int samplingPeriodInMilliSec, int childPID, const PowAndPerfResult& referenceResult) : void
+	+idleSample(int sleepPeriodInMs) : void
+	+plotPowerLog() : void
+	+staticEnergyProfiler(char* const* argv, int argc, BothStream& stream) : void
+	+waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec) : void
+}
+
+
+class IntelDevice {
+	+IntelDevice()
+	+~IntelDevice()
+	-devicePowerProfile_ : AvailableRaplPowerDomains
+	+getAvailablePowerDomains() : AvailableRaplPowerDomains
+	+getDefaultCaps() : RaplDefaults {query}
+	-raplDefaultCaps_ : RaplDefaults
+	-raplDirs_ : RaplDirs
+	+isDomainAvailable(Domain) : bool
+	+getCurrentPowerInWatts() : double {query}
+	+getNumInstructionsSinceReset() : double {query}
+	+getPowerLimitInWatts() : double {query}
+	-pcm_ : pcm::PCM*
+	-sysBeforeState_ : pcm::SystemCounterState
+	+getMinMaxLimitInWatts() : std::pair<unsigned , unsigned> {query}
+	+getName() : std::string {query}
+	-mapCpuFamilyName(int model) : std::string {query}
+	-raplVec_ : std::vector<Rapl>
+	+getPkgToFirstCoreMap() : std::vector<int> {query}
+	-pkgToFirstCoreMap_ : std::vector<int>
+	-beforeState_ : std::vector<pcm::CoreCounterState>
+	+getPerfCounter() : unsigned long long int {query}
+	-detectCPU() : void
+	-detectPackages() : void
+	-detectPowerCapsAvailability() : void
+	-initPerformanceCounters() : void
+	-initRaplObjectsForEachPKG() : void
+	-prepareRaplDirsFromAvailableDomains() : void
+	-readAndStoreDefaultLimits() : void
+	+reset() : void
+	+restoreDefaults() : void
+	-setLongTimeWindow(int) : void
+	+setPowerLimitInMicroWatts(unsigned long limitInMicroW) : void
+	+triggerPowerApiSample() : void
+}
+
+/'
+class ParamsConfig {
+	+ParamsConfig()
+	+configParamsMap_ : std::map<std::string, unsigned>
+	-loadParamsFromMap(std::map<std::string, unsigned> &) : void
+	-readConfigFile() : void
+}
+
+
+class PlotBuilder {
+	+PlotBuilder()
+	+PlotBuilder(std::string name)
+	+~PlotBuilder()
+	-gp_ : Gnuplot*
+	-prindBarWithErrAndLabels(std::string pathToFile, double xPosition, int seriesColumn, int stddevColumn, double barWidth, double yPositionRel, int dataIndex, std::string styleName, bool printTitle, std::string plotTitle, int labelPrecision, int fontSize, std::string baseValueVar) : std::string
+	-printBar(std::string pathToFile, double xPosition, double barWidth, int seriesColumn, std::string styleName, int dataIndex, bool printTitle, std::string plotTitle, std::string baseValueVar, int yBarOffset) : std::string
+	-printErrBar(std::string pathToFile, double xPosition, int seriesColumn, int stddevColumn, std::string styleName, int dataIndex, std::string baseValueVar) : std::string
+	-printLabel(std::string pathToFile, double xPosition, int seriesColumn, double yPositionRel, int dataIndex, int labelPrecision, int fontSize, std::string baseValueVar) : std::string
+	-initPlot(int, int) : void
+	+plot(std::vector<Series> sv) : void
+	+plotEPall(std::string) : void
+	+plotEPet(std::string) : void
+	+plotPowerLog(std::vector<Series> sv) : void
+	+plotRelMetr(std::vector<Series> sv) : void
+	+plotTmp(std::string) : void
+	+plotTmpGSS(std::string) : void
+	+setLegend(Legend option) : void
+	+setOutputName(std::string name) : void
+	+setPlotTitle(std::string title) : void
+	-setStyles() : void
+	+setXlabel(std::string xLabel, int fontSize) : void
+	+setYlabel(std::string xLabel, int fontSize) : void
+	+submitPlot() : void
+}
+'/
+
+package INTEL {
+class MSR {
+	+MSR(int core)
+	+~MSR()
+	+getPowerInfoForPKG() : PowerInfo
+	+checkLockedByBIOS() : bool
+	+getFixedDramUnitsValue() : double
+	+getUnits(Quantity q) : double
+	-getOffsetForPowerLimit(Domain domain) : int
+	+getEnergyStatus(Domain domain) : uint64_t
+	-readMSR(int offset) : uint64_t
+	+disableClamping(Domain domain) : void
+	+disablePowerCapping(Domain domain) : void
+	+enableClamping(Domain domain) : void
+	+enablePowerCapping(Domain domain) : void
+	-openMSR(int core) : void
+	-writeMSR(int offset, uint64_t value) : void
+}
+
+
+class Rapl {
+	+Rapl(int, AvailableRaplPowerDomains)
+	+~Rapl()
+	-availableDomains_ : AvailableRaplPowerDomains
+	+getTotalEnergy() : EnergyCrossDomains {query}
+	+getAveragePower() : PowerCrossDomains {query}
+	+getCurrentPower() : PowerCrossDomains {query}
+	-totalResultSinceLastReset_ : RaplState
+	-rss_ : RaplStateSequence
+	-calculate_power(uint64_t energyIncrement, double time_delta, double units) : double {query}
+	+current_time() : double
+	+dram_average_power() : double {query}
+	+dram_current_power() : double {query}
+	-dram_energy_units : double
+	+dram_total_energy() : double {query}
+	-energy_units : double
+	+get_total_time() : double {query}
+	-maximum_power : double
+	-minimum_power : double
+	+pkg_average_power() : double {query}
+	+pkg_current_power() : double {query}
+	+pkg_max_power() : double {query}
+	+pkg_total_energy() : double {query}
+	-power_units : double
+	+pp0_average_power() : double {query}
+	+pp0_current_power() : double {query}
+	+pp0_total_energy() : double {query}
+	+pp1_average_power() : double {query}
+	+pp1_current_power() : double {query}
+	+pp1_total_energy() : double {query}
+	-thermal_spec_power : double
+	-time_units : double
+	-time_window : double
+	-cpuCore_ : int
+	-initializeRaplForPowerReadingAndCapping() : void
+	+reset() : void
+	+sample() : void
+}
+
+
+class RaplStateSequence {
+	-current_ : RaplState
+	+getCurrentEnergyIncrement() : RaplState {query}
+	+getPreviousEnergyIncrement() : RaplState {query}
+	-next_ : RaplState
+	-previous_ : RaplState
+	+getCurrentTimeIncrement() : double {query}
+	+getPreviousTimeIncrement() : double {query}
+	+getTotalTime(time_point<std::chrono::high_resolution_clock> startTime) : double {query}
+	-timeDelta(time_point<std::chrono::high_resolution_clock> &, time_point<std::chrono::high_resolution_clock> &) : double {query}
+	-energyDelta(uint64_t before, uint64_t after) : uint64_t {query}
+	+reset() : void
+	+rotateStates() : void
+	+storeNextState(RaplState& rs) : void
+}
+
+/'
+class ResultsContainer {
+	+ResultsContainer(int size)
+	+~ResultsContainer()
+	+getAverageResult() : EnergyTimeResult {query}
+	+getStdDev() : EnergyTimeResult {query}
+	+getStdDevRel() : EnergyTimeResult {query}
+	-vec_ : std::vector<FinalPowerAndPerfResult>
+	+storeOneResult(unsigned index, const FinalPowerAndPerfResult& oneRes) : void
+}
+
+
+enum Domain {
+	DRAM
+	PKG
+	PP0
+	PP1
+}
+
+
+enum Eco::FilterType {
+	SMA100
+	SMA200
+	SMA50
+	SMA_10_S
+	SMA_1_S
+	SMA_20_S
+	SMA_2_S
+	SMA_5_S
+}
+
+
+enum Legend {
+	INSIDE
+	OUTSIDE
+}
+
+
+enum Quantity {
+	Energy
+	Power
+	Time
+}
+
+
+enum SearchType {
+	GOLDEN_SECTION_SEARCH
+	LINEAR_SEARCH
+}
+
+
+enum SeriesStyle {
+	BOX
+	LINES
+	LINES_WITH_POINTS
+	POINTS
+	Y_ERROR_BAR
+}
+
+
+enum TargetMetric {
+	MIN_E
+	MIN_E_X_T
+	MIN_M_PLUS
+}
+
+
+enum WatchdogStatus {
+	DISABLED
+	ENABLED
+}
+'/
+
+class AvailableRaplPowerDomains {
+	+AvailableRaplPowerDomains()
+	+AvailableRaplPowerDomains(bool, bool, bool, bool, bool)
+	+~AvailableRaplPowerDomains()
+	+availableDomainsSet_ : std::set<PowerCapDomain>
+}
+
+/'
+class Constraints {
+	+Constraints(double lp, double sp, double lw, double sw)
+	+~Constraints()
+	+operator<<(Stream& os, const Constraints& c) : Stream&
+	+longPower : double
+	+longWindow : double
+	+shortPower : double
+	+shortWindow : double
+}
+
+
+class EnergyTimeResult {
+	+EnergyTimeResult()
+	+EnergyTimeResult(double& e, double& t, double& p)
+	+EnergyTimeResult(double& e, TimeResult& t, double& p)
+	+EnergyTimeResult(const double& e, const double& t, const double& p)
+	+EnergyTimeResult(const double& e, const TimeResult& t, const double& p)
+	+~EnergyTimeResult()
+	+operator-(const EnergyTimeResult &, const EnergyTimeResult &) : EnergyTimeResult
+	+pow(const EnergyTimeResult &, const double &) : EnergyTimeResult
+	+sqrt(const EnergyTimeResult &) : EnergyTimeResult
+	+operator*=(EnergyTimeResult& left, const T& right) : EnergyTimeResult&
+	+operator+=(EnergyTimeResult &, const EnergyTimeResult &) : EnergyTimeResult&
+	+operator/(EnergyTimeResult& left, const T& right) : EnergyTimeResult&
+	+time_ : TimeResult
+	+checkPlusMetric(const EnergyTimeResult& ref, double k) : double {query}
+}
+
+
+class FinalPowerAndPerfResult {
+	+FinalPowerAndPerfResult()
+	+FinalPowerAndPerfResult(double, double, double, double, double, double, TimeResult, double, double, double, double, double, double, double)
+	+~FinalPowerAndPerfResult()
+	+getEnergyAndTime() : EnergyTimeResult {query}
+	+operator+=(FinalPowerAndPerfResult &, const FinalPowerAndPerfResult &) : FinalPowerAndPerfResult&
+	+operator/=(FinalPowerAndPerfResult &, const unsigned &) : FinalPowerAndPerfResult&
+	+time_ : TimeResult
+	+getEnergyPerInstr() : double {query}
+	+getInstrPerSec() : double {query}
+	+operator<<(std::ostream &, const FinalPowerAndPerfResult &) : std :: ostream&
+}
+
+
+class PowAndPerfResult {
+	+PowAndPerfResult()
+	+PowAndPerfResult(double instructions, double timeInSec, double powerLimit, double energy, double avgCorePower, double avgMemoryPower, double filteredPower)
+	+isRightBetter(PowAndPerfResult &, TargetMetric) : bool
+	+checkPlusMetric(PowAndPerfResult ref, double k) : double
+	+getEnergyPerInstr() : double {query}
+	+getEnergyTimeProd() : double {query}
+	+getInstrPerJoule() : double {query}
+	+getInstrPerSecond() : double {query}
+	+operator<<(std::ostream &, const PowAndPerfResult &) : std :: ostream&
+}
+
+
+class PowerAndPerfState {
+	+PowerAndPerfState(double pow, unsigned long long ker, time_point<std::chrono::high_resolution_clock> t)
+	+power_ : double
+	+time_ : time_point<std::chrono::high_resolution_clock>
+	+kernelsCount_ : unsigned long long
+}
+
+
+class PowerInfo {
+	+maxPower : double
+	+maxTimeWindow : double
+	+minPower : double
+	+thermalDesignPower : double
+}
+'/
+
+class RaplDefaults {
+	+defaultConstrPKG_ : std::shared_ptr<Constraints>
+	+defaultConstrDRAM_ : std::shared_ptr<SubdomainInfo>
+	+defaultConstrPP0_ : std::shared_ptr<SubdomainInfo>
+	+defaultConstrPP1_ : std::shared_ptr<SubdomainInfo>
+}
+
+
+class RaplDirs {
+	+dramDirs_ : std::vector<std::string>
+	+packagesDirs_ : std::vector<std::string>
+	+pp0Dirs_ : std::vector<std::string>
+	+pp1Dirs_ : std::vector<std::string>
+}
+
+
+class RaplState {
+	+RaplState()
+	+RaplState(uint64_t pk, uint64_t p0, uint64_t p1, uint64_t d, time_point<std::chrono::high_resolution_clock> t)
+	+operator+=(RaplState &, const RaplState &) : RaplState&
+}
+
+}
+/'
+class Series {
+	+Series(std::string n, int x, int y, std::string sn)
+	+xSeriesID : int
+	+ySeriesID : int
+	+inputFileName : std::string
+	+seriesName : std::string
+}
+
+
+class SubdomainInfo {
+	+SubdomainInfo(double pl, double tw, bool en)
+	+~SubdomainInfo()
+	+operator<<(Stream& os, const SubdomainInfo& sd) : Stream&
+	+isEnabled : bool
+	+powerLimit : double
+	+timeWindow : double
+}
+
+
+class TimeResult {
+	+TimeResult()
+	+TimeResult(double t)
+	+TimeResult(double t, double wt, double tt)
+	+~TimeResult()
+	+operator-(const TimeResult &, const TimeResult &) : TimeResult
+	+pow(const TimeResult &, const double &) : TimeResult
+	+sqrt(const TimeResult &) : TimeResult
+	+operator*=(TimeResult& left, const T& right) : TimeResult&
+	+operator+=(TimeResult &, const TimeResult &) : TimeResult&
+	+operator/(TimeResult& left, const T& right) : TimeResult&
+	+operator/=(TimeResult& left, const T& right) : TimeResult&
+	+operator/=(const TimeResult& right) : TimeResult&
+	+getExecTime() : double {query}
+	+getRelativeTestTime() : double {query}
+	+getRelativeWaitTime() : double {query}
+}
+
+'/
+
+
+
+/' Inheritance relationships '/
+
+.Device <|-- .CudaDevice
+
+
+.Device <|-- .IntelDevice
+
+
+.EcoApi <|-- .Eco
+
+
+.EcoApi <|-- .GpuEco
+
+
+
+
+
+/' Aggregation relationships '/
+
+.DeviceStateAccumulator *-- .Device
+
+/'
+.DeviceStateAccumulator "3" *-- .PowerAndPerfState
+
+
+.Eco "2" *-- .DataFilter
+'/
+
+.Eco *-- .Device
+
+
+.Eco "2" *-- .DeviceStateAccumulator
+
+/'
+.Eco *-- .FinalPowerAndPerfResult
+
+
+.Eco *-- .WatchdogStatus
+
+
+.EcoApi *-- .ParamsConfig
+
+
+.EnergyTimeResult *-- .TimeResult
+
+
+.FinalPowerAndPerfResult *-- .TimeResult
+
+
+.GpuEco *-- .BothStream
+'/
+
+.GpuEco *-- .CudaDevice
+
+
+.GpuEco *-- .DeviceStateAccumulator
+
+/'
+.IntelDevice *-- .AvailableRaplPowerDomains
+'/
+
+.IntelDevice *-- .INTEL.Rapl
+
+
+.IntelDevice *-- .INTEL.RaplDefaults
+
+
+.IntelDevice *-- .INTEL.RaplDirs
+
+/'
+.Rapl *-- .AvailableRaplPowerDomains
+'/
+
+.INTEL.Rapl *-- .INTEL.RaplState
+
+
+.INTEL.Rapl *-- .INTEL.RaplStateSequence
+
+/'
+.RaplDefaults *-- .Constraints
+
+
+.RaplDefaults "3" *-- .SubdomainInfo
+
+
+.RaplStateSequence "3" *-- .RaplState
+
+
+.ResultsContainer *-- .FinalPowerAndPerfResult
+'/
+
+package NVIDIA {
+interface NVML
+}
+.CudaDevice *-- .NVIDIA.NVML
+
+
+
+
+/' Nested objects '/
+/'
+.Eco +-- .Eco::FilterType
+'/
+
+
+@enduml

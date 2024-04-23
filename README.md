@@ -81,7 +81,7 @@ make
 # Known dependencies
 ```
 sudo apt-get update && sudo apt-get install build-essential cmake gnuplot
-sudo apt-get install libboost-all-dev
+sudo apt-get install libboost-all-dev graphviz
 ```
 
 # Exemplary usage
