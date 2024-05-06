@@ -35,7 +35,9 @@ public:
     int reducedPowerCapRange_ {0};
     int optimizationDelay_ {0}; // seconds
     int isPowerLogOn_ {1};
+    int repeatTuningPeriodInSec_ {10}; // seconds
     double k_ {1.0};
+    bool doWaitPhase_ {true};
     std::map <std::string, unsigned> configParamsMap_;
 private:
     void readConfigFile();

@@ -135,12 +135,12 @@ class Eco : public EcoApi
     void justSample(int timeS);
     void reportResult(double = 0.0, double = 0.0);
     void waitPhase(int&, int);
-    int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&);
-    void execPhase(int, int&, int, PowAndPerfResult&);
+    int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
+    void execPhase(int, int&, int, PowAndPerfResult&, bool = false);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
-    int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric);
-    int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric);
+    int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
+    int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
 
-    static constexpr int FIRST_RUN_MULTIPLIER {3};
+    static constexpr int REFERENCE_RUN_MULTIPLIER {3};
 };

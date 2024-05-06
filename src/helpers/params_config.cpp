@@ -110,5 +110,15 @@ void ParamsConfig::loadParamsFromMap(std::map <std::string, unsigned>& paramsMap
             std::cout << "\tOptimal settings search will start after "
                       << optimizationDelay_ << " seconds.\n";
         }
+        else if (element.first == "repeatTuningPeriodInSec") {
+            repeatTuningPeriodInSec_ = element.second;
+            std::cout << "\tTuning phase will be repeated after "
+                      << repeatTuningPeriodInSec_ << " seconds.\n";
+        }
+        else if (element.first == "doWaitPhase") {
+            doWaitPhase_ = element.second == 1;
+            std::cout << "\tDEPO will DO "
+                      << (doWaitPhase_ ? "" : "NOT") << " wait for steady power consumption profile basing on SMA filtered power reading.\n";
+        }
     }
 }
