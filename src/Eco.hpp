@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -54,6 +54,8 @@ class EcoApi
     virtual FinalPowerAndPerfResult runAppWithSampling(char* const*, int) = 0;
     virtual FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int) = 0;
     virtual void plotPowerLog() = 0;
+    virtual std::string getDeviceName() const = 0;
+
     double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
     void setCustomK(double k) { cfg_.k_ = k; } // temporary setter until Eco is reorganised
     int getNumIterations() { return cfg_.numIterations_; }
@@ -70,21 +72,23 @@ class EcoApi
 class Eco : public EcoApi
 {
   public:
-    void referenceRunWithoutCaps(char* const*);
-    void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
     void idleSample(int idleTimeS) override;
-    FinalPowerAndPerfResult runAppWithLinearSearch(char* const*,
-                                                   TargetMetric = TargetMetric::MIN_E);
-    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1);
-    FinalPowerAndPerfResult runAppWithGoldenSectionSearch(char* const*,
-                                                          TargetMetric = TargetMetric::MIN_E);
-    FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int = 1) override;
-    void storeReferenceRun(FinalPowerAndPerfResult&);
+    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1) override;
+    FinalPowerAndPerfResult runAppWithSearch(
+      char* const*,
+      TargetMetric,
+      SearchType,
+      int = 1) override;
     void plotPowerLog() override;
-    std::string getCpuName() { return device_->getCPUname(); }
+    std::string getDeviceName() const override { return device_->getName(); }
+
     void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
-    Eco(std::shared_ptr<Device>);
+    void referenceRunWithoutCaps(char* const*);
+    void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
+    void storeReferenceRun(FinalPowerAndPerfResult&);
+
+    Eco(std::shared_ptr<IntelDevice>);
     virtual ~Eco();
 
   protected:
@@ -107,13 +111,13 @@ class Eco : public EcoApi
     double pprevSMA_ {0.0}, prevSMA_ {0.0};
     bool optimizationTrigger_ {false};
 
-    DeviceState devStateGlobal_;
-    DeviceState devStateLocal_;
+    DeviceStateAccumulator devStateGlobal_;
+    DeviceStateAccumulator devStateLocal_;
     std::vector<FinalPowerAndPerfResult> fullAppRunResultsContainer_;
 
     WatchdogStatus defaultWatchdog;
     std::ofstream outPowerFile;
-    std::chrono::high_resolution_clock::time_point startTime_;
+    double defaultPowerLimitInWatts_; // PKG domain power limit
 
     void storeDataPointToFilters(double);
     double getFilteredPower();
@@ -131,12 +135,12 @@ class Eco : public EcoApi
     void justSample(int timeS);
     void reportResult(double = 0.0, double = 0.0);
     void waitPhase(int&, int);
-    int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&);
-    void execPhase(int, int&, int, PowAndPerfResult&);
+    int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
+    void execPhase(int, int&, int, PowAndPerfResult&, bool = false);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
-    int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric);
-    int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric);
+    int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
+    int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
 
-    static constexpr int FIRST_RUN_MULTIPLIER {3};
+    static constexpr int REFERENCE_RUN_MULTIPLIER {3};
 };

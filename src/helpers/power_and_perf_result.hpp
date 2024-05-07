@@ -20,17 +20,37 @@
 #include <iostream>
 
 struct PowAndPerfResult {
-    PowAndPerfResult() {}
-    PowAndPerfResult(double i, double per, double pc, double e, double avp, double fp)
-        : instr(i), period(per), pCap(pc), energy(e), avP(avp), filteredP(fp) {}
-    double instr {0.01}, period {0.01}, pCap {0.01}, energy {0.01}, avP {0.01}, filteredP {0.01};
-    double myPlusMetric_ {1.0};
-    double getInstrPerSecond() const { return instr/period; }
-    double getInstrPerJoule() const { return instr/energy; }
-    double getEnergyPerInstr() const { return energy/instr; }
-    double getEnergyTimeProd() const { return getInstrPerSecond() * getInstrPerSecond() / avP; }
+    PowAndPerfResult() = default;
+    PowAndPerfResult(
+        double instructions,
+        double timeInSec,
+        double powerLimit,
+        double energy,
+        double avgCorePower,
+        double avgMemoryPower,
+        double filteredPower) :
+        instructionsCount_(instructions),
+        periodInSeconds_(timeInSec),
+        appliedPowerCapInWatts_(powerLimit),
+        energyInJoules_(energy),
+        averageCorePowerInWatts_(avgCorePower),
+        averageMemoryPowerInWatts_(avgMemoryPower),
+        filteredPowerOfLimitedDomainInWatts_(filteredPower)
+        {
+        }
+    double getInstrPerSecond() const { return instructionsCount_/periodInSeconds_; }
+    double getInstrPerJoule() const { return instructionsCount_/energyInJoules_; }
+    double getEnergyPerInstr() const { return energyInJoules_/instructionsCount_; }
+    double getEnergyTimeProd() const { return getInstrPerSecond() * getInstrPerSecond() / averageCorePowerInWatts_; }
     double checkPlusMetric(PowAndPerfResult ref, double k);
     friend std::ostream& operator<<(std::ostream&, const PowAndPerfResult&);
     bool isRightBetter(PowAndPerfResult&, TargetMetric = TargetMetric::MIN_E);
-
+    double instructionsCount_ {0.01};
+    double periodInSeconds_ {0.01};
+    double appliedPowerCapInWatts_ {0.01};
+    double energyInJoules_ {0.01};
+    double averageCorePowerInWatts_ {0.01};
+    double averageMemoryPowerInWatts_ {0.01};
+    double filteredPowerOfLimitedDomainInWatts_ {0.01}; // assume that either Core or Memory is limited
+    double myPlusMetric_ {1.0};
 };

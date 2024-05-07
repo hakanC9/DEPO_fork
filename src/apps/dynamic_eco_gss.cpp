@@ -74,7 +74,7 @@ int main (int argc, char *argv[]) {
 	watchdog.close();
 
 
-    Eco eco(std::make_shared<Device>());
+    Eco eco(std::make_shared<IntelDevice>());
     std::ofstream outResultFile (eco.getResultFileName(), std::ios::out | std::ios::trunc);
 
     BothStream bout(outResultFile);
@@ -135,7 +135,7 @@ int main (int argc, char *argv[]) {
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 3,
                                       imgFileName.end(),
                                       "png"));
-	p.setPlotTitle(eco.getCpuName());
+	p.setPlotTitle(eco.getDeviceName());
     std::cout << "Processing " << eco.getResultFileName() << " file...\n";
 	p.plotTmpGSS(eco.getResultFileName());
     p.submitPlot();

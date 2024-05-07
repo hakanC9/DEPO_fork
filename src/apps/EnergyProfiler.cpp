@@ -43,7 +43,7 @@ int main (int argc, char *argv[]) {
         }
         else
         {
-        eco = std::make_unique<Eco>(std::make_shared<Device>());
+        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>());
         }
     }
 
@@ -88,7 +88,7 @@ int main (int argc, char *argv[]) {
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 4,
                                       imgFileName.end(),
                                       "_Et.png"));
-	// p.setPlotTitle(eco->getCpuName());
+	p.setPlotTitle(eco->getDeviceName());
     std::cout << "Processing " << eco->getResultFileName() << " file...\n";
 	p.plotEPet(eco->getResultFileName());
     p.submitPlot();
@@ -98,7 +98,7 @@ int main (int argc, char *argv[]) {
     PlotBuilder p2(imgFileName2.replace(imgFileName2.end() - 3,
                                       imgFileName2.end(),
                                       "png"));
-	// p2.setPlotTitle(eco->getCpuName());
+	p2.setPlotTitle(eco->getDeviceName());
     std::cout << "Processing " << eco->getResultFileName() << " file...\n";
 	p2.plotEPall(eco->getResultFileName());
     p2.submitPlot();

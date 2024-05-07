@@ -82,6 +82,8 @@ uint64_t MSR::getEnergyStatus(Domain domain) {
         case Domain::DRAM :
             return readMSR(MSR_DRAM_ENERGY_STATUS) & MAX_INT;
             break;
+        default:
+            return MAX_INT;
     }
 }
 
@@ -97,6 +99,8 @@ double MSR::getUnits(Quantity q) {
 		case Quantity::Time:
 		    return pow(0.5, (double) ((rawValue >> 16) & 0xf));
 			break;
+        default:
+            return rawValue;
 	}
 }
 

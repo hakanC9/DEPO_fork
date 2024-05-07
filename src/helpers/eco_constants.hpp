@@ -109,12 +109,14 @@ struct SubdomainInfo {
     bool isEnabled;
 
     template <class Stream>
-    friend Stream& operator<<(Stream& os, const SubdomainInfo& sd) {
+    friend Stream& operator<<(Stream& os, const SubdomainInfo& sd)
+    {
         os << std::fixed << std::setprecision(0)
         << "limit:\t\t" << sd.powerLimit << "\n"
         << "window:\t\t" << sd.timeWindow  << "\n"
         << "enabled:\t" << (sd.isEnabled ? 1 : 0) << "\n"
         << std::flush;
+        return os;
     }
 };
 
@@ -126,13 +128,15 @@ struct Constraints {
     double longPower, shortPower, longWindow, shortWindow;
 
     template <class Stream>
-    friend Stream& operator<<(Stream& os, const Constraints& c) {
+    friend Stream& operator<<(Stream& os, const Constraints& c)
+    {
         os << std::fixed << std::setprecision(0)
         << "long limit:\t\t" << c.longPower << "\n"
         << "long window:\t" << c.longWindow  << "\n"
         << "short limit:\t" << c.shortPower << "\n"
         << "short window:\t" << c.shortWindow << "\n"
         << std::flush;
+        return os;
     }
 };
 

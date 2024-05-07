@@ -17,15 +17,15 @@
 #include "power_and_perf_result.hpp"
 
 std::ostream& operator<<(std::ostream& os, const PowAndPerfResult& res) {
-    if (res.pCap < 0.0) {
+    if (res.appliedPowerCapInWatts_ < 0.0) {
         os << "refer.\t";
     } else {
-        os << res.pCap << "\t";
+        os << res.appliedPowerCapInWatts_ << "\t";
     }
-    os << res.energy << "\t"
-       << res.avP << "\t"
-       << res.filteredP << "\t"
-       << res.instr << "\t"
+    os << res.energyInJoules_ << "\t"
+       << res.averageCorePowerInWatts_ << "\t"
+       << res.filteredPowerOfLimitedDomainInWatts_ << "\t"
+       << res.instructionsCount_ << "\t"
        << res.getInstrPerSecond() << "\t"
        << res.getInstrPerJoule() << " \t\t"
        << res.getEnergyTimeProd();
@@ -49,6 +49,6 @@ bool PowAndPerfResult::isRightBetter(PowAndPerfResult& right, TargetMetric mode)
 
 double PowAndPerfResult::checkPlusMetric(PowAndPerfResult ref, double k) {
     myPlusMetric_ = (1.0/k) * (ref.getInstrPerSecond()/getInstrPerSecond()) *
-                    ((k-1.0) * (avP / ref.avP) + 1.0);
+                    ((k-1.0) * (averageCorePowerInWatts_ / ref.averageCorePowerInWatts_) + 1.0);
     return myPlusMetric_;
 }

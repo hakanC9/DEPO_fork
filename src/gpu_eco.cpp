@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@
 #include "gpu_eco.hpp"
 
 static inline
-void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b)
+void logCurrentRangeGSS(int a, int leftCandidateInMilliWatts, int rightCandidateInMilliWatts, int b)
 {
     std::cout << "#--------------------------------\n"
               << "# Current GSS range: |"
               << a << " "
-              << leftCandidate << " "
-              << rightCandidate << " "
+              << leftCandidateInMilliWatts << " "
+              << rightCandidateInMilliWatts << " "
               << b << "|\n"
               << "#--------------------------------\n";
 }
@@ -81,6 +81,7 @@ int long long readValueFromFile (std::string fileName)
 CudaDevice::CudaDevice(int devID) :
     deviceID_(devID) // and then this field shall not be a member of this class as the API allows for access to any device
 {
+    std::cout << "[DEBUG]: CudaDevice constructor called!\n";
     int major;
     CUresult result;
     CUdevice device {deviceID_};
@@ -119,24 +120,38 @@ CudaDevice::CudaDevice(int devID) :
     }
     printf("Found %d device%s\n\n", deviceCount_, deviceCount_ != 1 ? "s" : "");
     initDeviceHandles();
+    std::cout << "DEBUG device handles initialized succesfully" << std::endl;
 }
 
-int CudaDevice::getPowerLimit(unsigned deviceID)
+double CudaDevice::getPowerLimitInWatts() const
 {
     unsigned currPowerLimitInMilliWatts = 0;
-    nvmlReturn_t nvResult = nvmlDeviceGetEnforcedPowerLimit (deviceHandles_[deviceID], &currPowerLimitInMilliWatts);
+    nvmlReturn_t nvResult = nvmlDeviceGetEnforcedPowerLimit (deviceHandles_[deviceID_], &currPowerLimitInMilliWatts);
     if (NVML_SUCCESS != nvResult)
     {
         printf("Failed to GET current power limit: %s\n", nvmlErrorString(nvResult));
         return -1;
     }
-    return currPowerLimitInMilliWatts;
+    return (double)currPowerLimitInMilliWatts / 1000;
 }
 
-std::pair<unsigned, unsigned> CudaDevice::getMinMaxLimitInWatts(unsigned deviceID)
+std::string CudaDevice::getName() const
+{
+    constexpr unsigned maxLength = 96;
+    char name[maxLength];
+    nvmlReturn_t nvResult = nvmlDeviceGetName (deviceHandles_[deviceID_], name, maxLength);
+    if (NVML_SUCCESS != nvResult)
+    {
+        printf("Failed to GET device name: %s\n", nvmlErrorString(nvResult));
+        return std::string("Unknown GPU");
+    }
+    return std::string(name);
+}
+
+std::pair<unsigned, unsigned> CudaDevice::getMinMaxLimitInWatts() const
 {
     unsigned min = 0, max = 0;
-    nvmlReturn_t nvResult = nvmlDeviceGetPowerManagementLimitConstraints (deviceHandles_[deviceID], &min, &max);
+    nvmlReturn_t nvResult = nvmlDeviceGetPowerManagementLimitConstraints (deviceHandles_[deviceID_], &min, &max);
     if (NVML_SUCCESS != nvResult)
     {
         printf("Failed to GET min/max power limit: %s\n", nvmlErrorString(nvResult));
@@ -144,17 +159,18 @@ std::pair<unsigned, unsigned> CudaDevice::getMinMaxLimitInWatts(unsigned deviceI
     return std::make_pair(min/1000, max/1000);
 }
 
-void CudaDevice::setPowerLimit(unsigned deviceID, int limitInWatts)
+void CudaDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW)
 {
-    nvmlReturn_t nvResult = nvmlDeviceSetPowerManagementLimit (deviceHandles_[deviceID], limitInWatts * 1000);
+    unsigned long limitInMilliWatts = limitInMicroW / 10e3;
+    nvmlReturn_t nvResult = nvmlDeviceSetPowerManagementLimit (deviceHandles_[deviceID_], limitInMilliWatts);
     if (NVML_SUCCESS != nvResult)
     {
-        printf("Failed to SET current power limit %d: %s\n", limitInWatts * 1000, nvmlErrorString(nvResult));
+        printf("Failed to SET current power limit %ld [mW]: %s\n", limitInMilliWatts, nvmlErrorString(nvResult));
         return;
     }
 }
 
-void CudaDevice::resetKernelCounterRegister()
+void CudaDevice::reset()
 {
     std::ofstream kernelCounterFile;
     kernelCounterFile.open("kernels_count", std::ios::out | std::ios::trunc);
@@ -162,7 +178,7 @@ void CudaDevice::resetKernelCounterRegister()
     kernelCounterFile.close();
 }
 
-double CudaDevice::getCurrentPowerInWattsForDeviceID() // this method shall have the input parameter "deviceID" back
+double CudaDevice::getCurrentPowerInWatts() const
 {
     unsigned power;
     nvmlReturn_t nvResult = nvmlDeviceGetPowerUsage(deviceHandles_[deviceID_], &power);
@@ -191,88 +207,87 @@ void CudaDevice::initDeviceHandles()
     }
 }
 
-
-
-GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
-    absoluteStartTime_(std::chrono::high_resolution_clock::now()),
-    timeOfLastReset_(std::chrono::high_resolution_clock::now()),
-    gpu_(device),
-    prev_(0.0, 0, timeOfLastReset_),
-    curr_(prev_),
-    next_(prev_)
+unsigned long long int CudaDevice::getPerfCounter() const
 {
-    // prev_ = curr_ = next_ = NvidiaState(0.0, 0,);
-    sample();
-    sample();
+    long long int kernelsCountTmp {-1};
+    do
+    {
+        kernelsCountTmp = readValueFromFile("./kernels_count");
+    }
+    while (kernelsCountTmp == -1);
+
+    return (unsigned long long)kernelsCountTmp;
 }
 
-GpuDeviceState& GpuDeviceState::sample()
-{
-    prev_ = curr_;
-    curr_ = next_;
 
-    // -----------------------------------------------
-    // Below shall be enabled when DEPO upgrade
-    // for GPU is merged
-    // -----------------------------------------------
-    // long long int kernelsCountTmp {-1};
-    // do
-    // {
-    //     kernelsCountTmp = readValueFromFile("./kernels_count");
-    // }
-    // while (kernelsCountTmp == -1);
+// GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
+//     absoluteStartTime_(std::chrono::high_resolution_clock::now()),
+//     timeOfLastReset_(std::chrono::high_resolution_clock::now()),
+//     gpu_(device),
+//     prev_(0.0, 0, timeOfLastReset_),
+//     curr_(prev_),
+//     next_(prev_)
+// {
+//     // prev_ = curr_ = next_ = PowerAndPerfState(0.0, 0,);
+//     sample();
+//     sample();
+//     std::cout << "DEBUG device state initialized succesfully" << std::endl;
+// }
 
-    // next_ = NvidiaState(
-    //     gpu_->getCurrentPowerInWattsForDeviceID(),
-    //     (unsigned long long)kernelsCountTmp,
-    //     std::chrono::high_resolution_clock::now());
-    // -----------------------------------------------
-    next_ = NvidiaState(
-        gpu_->getCurrentPowerInWattsForDeviceID(),
-        0, // kernels count for future use
-        std::chrono::high_resolution_clock::now());
-    // -----------------------------------------------
 
-    auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
-    totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
-    return *this;
-}
+// GpuDeviceState& GpuDeviceState::sample()
+// {
+//     prev_ = curr_;
+//     curr_ = next_;
 
-PowAndPerfResult GpuDeviceState::getCurrentPowerAndPerf(int deviceID) const
-{
-    double timeDelta = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
-    return PowAndPerfResult(
-        (double)(next_.kernelsCount_ - curr_.kernelsCount_),
-        timeDelta / 1000,
-        gpu_->getPowerLimit(deviceID),
-        next_.power_ * timeDelta / 1000, // Watts x seconds
-        next_.power_,
-        next_.power_ // TODO: this should be filtered power
-        );
-}
+//     const auto kernelsCounter = gpu_->getPerfCounter();
 
-double GpuDeviceState::getEnergySinceReset() const
-{
-    return totalEnergySinceReset_;
-}
+//     next_ = PowerAndPerfState(
+//         gpu_->getCurrentPowerInWatts(),
+//         kernelsCounter,
+//         std::chrono::high_resolution_clock::now());
 
-void GpuDeviceState::resetState()
-{
-    timeOfLastReset_ = std::chrono::high_resolution_clock::now();
-    totalEnergySinceReset_ = 0.0;
-    gpu_->resetKernelCounterRegister();
-    sample();
-    sample();
-}
+//     auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
+//     totalEnergySinceReset_ += next_.power_ * timeDeltaMs / 1000;
+//     return *this;
+// }
+
+// PowAndPerfResult GpuDeviceState::getCurrentPowerAndPerf(int deviceID) const
+// {
+//     double timeDeltaMilliSeconds = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
+//     return PowAndPerfResult(
+//         (double)(next_.kernelsCount_ - curr_.kernelsCount_),
+//         timeDeltaMilliSeconds / 1000,
+//         gpu_->getPowerLimitInWatts(),
+//         next_.power_ * timeDeltaMilliSeconds / 1000, // Watts x seconds
+//         next_.power_,
+//         0.0, // memory power - not available for GPU
+//         next_.power_ // TODO: this should be filtered power
+//         );
+// }
+
+// double GpuDeviceState::getEnergySinceReset() const
+// {
+//     return totalEnergySinceReset_;
+// }
+
+// void GpuDeviceState::resetState()
+// {
+//     timeOfLastReset_ = std::chrono::high_resolution_clock::now();
+//     totalEnergySinceReset_ = 0.0;
+//     gpu_->reset();
+//     sample();
+//     sample();
+// }
 
 
 GpuEco::GpuEco(int deviceID) : deviceID_(deviceID)
 {
     gpu_ = std::make_shared<CudaDevice>(deviceID);
-    deviceState_ = std::make_unique<GpuDeviceState>(gpu_);
-    std::tie(minPowerLimit_, maxPowerLimit_) = gpu_->getMinMaxLimitInWatts(deviceID_);
-    defaultPowerLimit_ = gpu_->getPowerLimit(deviceID_) / 1000;
-    gpu_->resetKernelCounterRegister();
+    deviceState_ = std::make_unique<DeviceStateAccumulator>(gpu_);
+    std::tie(minPowerLimit_, maxPowerLimit_) = gpu_->getMinMaxLimitInWatts();
+    defaultPowerLimitInWatts_ = gpu_->getPowerLimitInWatts();
+    gpu_->reset();
     const auto dir = generateUniqueDir();
     outPowerFileName_ = dir + "power_log.csv";
     outResultFileName_ = dir + "result.csv";
@@ -282,7 +297,7 @@ GpuEco::GpuEco(int deviceID) : deviceID_(deviceID)
 
 GpuEco::~GpuEco()
 {
-    gpu_->setPowerLimit(deviceID_, defaultPowerLimit_);
+    gpu_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
     outPowerFile_.close();
 }
 
@@ -290,8 +305,8 @@ void GpuEco::idleSample(int sleepPeriodInMs)
 {
     usleep(sleepPeriodInMs * 1000);
     deviceState_->sample();
-    auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
-    *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), tmpResult, tmpResult);
+    auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+    *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult);
     }
 
 FinalPowerAndPerfResult GpuEco::runAppWithSampling(char* const* argv, int argc)
@@ -303,7 +318,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSampling(char* const* argv, int argc)
         command += " ";
     }
     deviceState_->resetState();
-    int status;
+    int status = 1;
     pid_t childProcId = fork();
     if (childProcId >= 0)
     {
@@ -332,7 +347,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSampling(char* const* argv, int argc)
     }
     const auto&& execTime = deviceState_->getTimeSinceReset<std::chrono::milliseconds>() / 1000;
     return FinalPowerAndPerfResult(
-        gpu_->getPowerLimit(deviceID_) / 1000,
+        gpu_->getPowerLimitInWatts(),
         deviceState_->getEnergySinceReset(),
         deviceState_->getEnergySinceReset() / execTime,
         0.0, //PP0
@@ -362,9 +377,9 @@ void GpuEco::staticEnergyProfiler(char* const* argv, int argc, BothStream& strea
     //
     oneSeriesResultVec.push_back(reference);
     stream << reference << "\n";
-    for (unsigned cap = maxPowerLimit_; cap >= minPowerLimit_; cap-=5)
+    for (unsigned limitInWatts = maxPowerLimit_; limitInWatts >= minPowerLimit_; limitInWatts -= 5)
     {
-        gpu_->setPowerLimit(deviceID_, cap);
+        gpu_->setPowerLimitInMicroWatts(limitInWatts * 10e6);
         // average for numIterations_ number of runs
         FinalPowerAndPerfResult current;
         for(auto i = 0; i < cfg_.numIterations_; i++) {
@@ -382,7 +397,7 @@ void GpuEco::staticEnergyProfiler(char* const* argv, int argc, BothStream& strea
         auto mPlusDynamic = (1.0/k) * (reference.getInstrPerSec() / current.getInstrPerSec()) *
                             ((k-1.0) * (current.getEnergyPerInstr() / reference.getEnergyPerInstr()) + 1.0);
         auto&& timeDelta = current.time_.totalTime_ - reference.time_.totalTime_;
-        oneSeriesResultVec.emplace_back(gpu_->getPowerLimit(deviceID_) / 1000,
+        oneSeriesResultVec.emplace_back(gpu_->getPowerLimitInWatts(),
                                         current.energy,
                                         current.pkgPower,
                                         current.pp0power,
@@ -428,7 +443,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
         command += " ";
     }
     deviceState_->resetState();
-    int status = 1;
+
     double waitTime = 0.0, testTime = 0.0;
     int bestResultCap = 300;
     pid_t childProcId = fork();
@@ -444,6 +459,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
         }
         else
         {
+            int status = 1;
             waitpid(childProcId, &status, WNOHANG);
             waitTime = measureDuration([&, this] {
                 waitForGpuComputeActivity(status, cfg_.msPause_);
@@ -463,7 +479,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
                 }
             });
             executeWithPowercap(status, bestResultCap, cfg_.msPause_, childProcId, referenceRun);
-            gpu_->setPowerLimit(deviceID_, defaultPowerLimit_);
+            gpu_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
             wait(&status);
         }
     }
@@ -494,7 +510,7 @@ void GpuEco::plotPowerLog()
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 4,
                                     imgFileName.end(),
                                     ".png"));
-    p.setPlotTitle("Dynamic power capping for NVIDIA GPU");
+    p.setPlotTitle("Power log - " + getDeviceName());
     Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
     Series currPower (outPowerFileName_, 1, 3, "P[W]");
     Series currENG (outPowerFileName_, 1, 7, "ENG");
@@ -512,13 +528,13 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
     {
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
-        *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), tmpResult, tmpResult); // reference result is not relevant yet
-        if (tmpResult.instr > 0)
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult); // reference result is not relevant yet
+        if (tmpResult.instructionsCount_ > 0)
         {
             cyclesWithGpuActivity++;
         }
-        else if (tmpResult.instr == 0)
+        else if (tmpResult.instructionsCount_ == 0)
         {
             cyclesWithGpuActivity = 0;
         }
@@ -532,9 +548,9 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
 PowAndPerfResult GpuEco::getReferenceResult(const int referenceSampleTimeInMilliSec)
 {
     usleep(3 * referenceSampleTimeInMilliSec * 1000);
-    auto&& referenceResult = deviceState_->sample().getCurrentPowerAndPerf(deviceID_);
+    auto&& referenceResult = deviceState_->sample().getCurrentPowerAndPerf();
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
-    *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), referenceResult, referenceResult);
+    *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), referenceResult, referenceResult);
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
     return referenceResult;
 }
@@ -546,31 +562,31 @@ int GpuEco::runTunningPhaseLS(
     TargetMetric metric)
 {
     auto currBestResult = referenceResult;
-    int powercap = maxPowerLimit_;
+    int limitInWatts = maxPowerLimit_;
     while(status)
     {
-        gpu_->setPowerLimit(deviceID_, powercap);
+        gpu_->setPowerLimitInMicroWatts(limitInWatts * 10e6);
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
-        *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), tmpResult, referenceResult);
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
         // TODO: currently logCurrentResult function MUST be run before any isRightBetter() call as it actually evaluates
         //       the EDS metric. This dependency shall be removed.
         if (currBestResult.isRightBetter(tmpResult, metric))
         {
             currBestResult = std::move(tmpResult);
         }
-        if (powercap == minPowerLimit_)
+        if (limitInWatts == minPowerLimit_)
         {
             break;
         }
-        else if (powercap > minPowerLimit_)
+        else if (limitInWatts > minPowerLimit_)
         {
-            powercap -= 5;
+            limitInWatts -= 5;
         }
     }
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
-    return currBestResult.pCap;
+    return currBestResult.appliedPowerCapInWatts_;
 }
 
 int GpuEco::runTunningPhaseGSS(
@@ -581,12 +597,12 @@ int GpuEco::runTunningPhaseGSS(
 {
     int EPSILON = (maxPowerLimit_ - minPowerLimit_)/ 25;
     std::cout << "EPSILON: " << EPSILON << "\n";
-    int a = minPowerLimit_ * 1000;
-    int b = maxPowerLimit_ * 1000;
+    int a = minPowerLimit_ * 1000; // milli watts
+    int b = maxPowerLimit_ * 1000; // milli watts
     float phi = (sqrt(5) - 1) / 2; // this is equal 0.618 and it is reverse of 1.618
-    int leftCandidate = b - int(phi * (b - a));
-    int rightCandidate = a + int(phi * (b - a));
-    logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
+    int leftCandidateInMilliWatts = b - int(phi * (b - a));
+    int rightCandidateInMilliWatts = a + int(phi * (b - a));
+    logCurrentRangeGSS(a, leftCandidateInMilliWatts, rightCandidateInMilliWatts, b);
     bool measureL = true;
     bool measureR = true;
     PowAndPerfResult tmp = referenceResult;
@@ -595,42 +611,42 @@ int GpuEco::runTunningPhaseGSS(
         auto fL = tmp;
         if (measureL)
         {
-            gpu_->setPowerLimit(deviceID_, leftCandidate / 1000);
+            gpu_->setPowerLimitInMicroWatts(leftCandidateInMilliWatts * 10e3);
             usleep(samplingPeriodInMilliSec * 1000);
             deviceState_->sample();
-            fL = deviceState_->getCurrentPowerAndPerf(deviceID_);
+            fL = deviceState_->getCurrentPowerAndPerf();
             // std::cout << "measure left metric value " << fL.getInstrPerSecond() << std::endl;
         }
-        *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), fL, referenceResult);
+        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fL, referenceResult);
         auto fR = tmp;
         if (measureR)
         {
-            gpu_->setPowerLimit(deviceID_, rightCandidate / 1000);
+            gpu_->setPowerLimitInMicroWatts(rightCandidateInMilliWatts * 10e3);
             usleep(samplingPeriodInMilliSec * 1000);
             deviceState_->sample();
-            fR = deviceState_->getCurrentPowerAndPerf(deviceID_);
+            fR = deviceState_->getCurrentPowerAndPerf();
             // std::cout << "measure right metric value" << fR.getEnergyPerInstr() << std::endl;
         }
-        *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), fR, referenceResult);
+        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fR, referenceResult);
 
         if (!fL.isRightBetter(fR, metric)) {
-            // choose subrange [a, rightCandidate]
-            b = rightCandidate;
-            rightCandidate = leftCandidate;
+            // choose subrange [a, rightCandidateInMilliWatts]
+            b = rightCandidateInMilliWatts;
+            rightCandidateInMilliWatts = leftCandidateInMilliWatts;
             tmp = fL;
             measureR = false;
             measureL = true;
-            leftCandidate = b - int(phi * (b - a));
+            leftCandidateInMilliWatts = b - int(phi * (b - a));
         } else {
-            // choose subrange [leftCandidate, b]
-            a = leftCandidate;
-            leftCandidate = rightCandidate;
+            // choose subrange [leftCandidateInMilliWatts, b]
+            a = leftCandidateInMilliWatts;
+            leftCandidateInMilliWatts = rightCandidateInMilliWatts;
             tmp = fR;
             measureR = true;
             measureL = false;
-            rightCandidate = a + int(phi * (b - a));
+            rightCandidateInMilliWatts = a + int(phi * (b - a));
         }
-        logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
+        logCurrentRangeGSS(a, leftCandidateInMilliWatts, rightCandidateInMilliWatts, b);
     }
     // when stop condition was met return the middle of the subrange found
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
@@ -644,13 +660,13 @@ void GpuEco::executeWithPowercap(
     int childPID,
     const PowAndPerfResult& referenceResult)
 {
-    gpu_->setPowerLimit(deviceID_, powercapInWatts);
+    gpu_->setPowerLimitInMicroWatts(powercapInWatts * 10e6);
     while (status)
     {
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(deviceID_);
-        *bout_ << logCurrentGpuResultLine(deviceState_->getAbsoluteTimeSinceStart(), tmpResult, referenceResult);
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
         waitpid(childPID, &status, WNOHANG);
     }       
 }

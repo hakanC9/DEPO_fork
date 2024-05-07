@@ -19,7 +19,8 @@
 #include <iostream>
 #include <fstream>
 
-class BothStream {
+class BothStream
+{
 public:
     BothStream() = delete;
     BothStream(BothStream&) = delete;

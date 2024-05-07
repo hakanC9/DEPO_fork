@@ -20,17 +20,9 @@
 #include <vector>
 #include <memory>
 #include <set>
-#include "../helpers/eco_constants.hpp"
 #include <cpucounters.h>
-
-struct AvailablePowerDomains {
-    AvailablePowerDomains() {}
-    AvailablePowerDomains(bool, bool, bool, bool, bool);
-    ~AvailablePowerDomains() {}
-
-    bool pp0_{false}, pp1_{false}, dram_{false}, psys_{false}, fixedDramUnits_{false};
-    std::set<PowerCapDomain> availableDomainsSet_;
-};
+#include "../power_if/Rapl.hpp"
+#include "../helpers/eco_constants.hpp"
 
 struct RaplDirs
 {
@@ -57,20 +49,61 @@ struct RaplDefaults
 class Device
 {
 public:
-    Device();
-    ~Device() {}
-    int getNumPackages();
-    int getModel();
+    Device() {}
+    virtual ~Device() = default;
+    virtual std::string getName() const = 0;
+    // virtual void restoreDefaults() = 0;
+    // virtual int getDeviceMaxPowerInWatts() const = 0;
+    virtual std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const = 0;
+    virtual double getPowerLimitInWatts() const = 0;
+    virtual void setPowerLimitInMicroWatts(unsigned long limitInMicroW) = 0;
+    // virtual RaplDefaults getDefaultCaps() const = 0; // TODO: remove dependency on RAPL
+    virtual void reset() = 0;
+    virtual unsigned long long int getPerfCounter() const = 0;
+    virtual double getCurrentPowerInWatts() const = 0;
+    /*
+      triggerPowerApiSample - used to trigger next sample from Power Management API
+
+      This method is required for generalization of DeviceStateAccumulator.
+      Intel RAPL API depends on explicit triggering of next energy counter reads while
+      other vendors (like, e.g., NVIDIA in NVML) do it automatically in the library.
+      This makes defining this method OPTIONAL for most of vendors - the method definition
+      may be just left empty. For Intel it needs to have Rapl::sample() method call.
+    */
+    virtual void triggerPowerApiSample() = 0;
+
+private:
+};
+
+
+class IntelDevice : public Device
+{
+public:
+    IntelDevice();
+    virtual ~IntelDevice() = default;
+
+    double getPowerLimitInWatts() const override;
+    void setPowerLimitInMicroWatts(unsigned long limitInMicroW) override;
+    std::string getName() const override;
+    void reset() override;
+    double getCurrentPowerInWatts() const override;
+    void triggerPowerApiSample() override;
+    unsigned long long int getPerfCounter() const override;
+
+    /*
+      getMinMaxLimitInWatts - used to determine the available power limits range
+
+      returns the maximal available power limit in Watts. For the CPU it assumes that the
+      limit is identical to the default power cap. More details in the method's definition.
+      For Intel CPU it returns 0 as minimal value. In the future it might be fixed.
+    */
+    std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const override;
     void restoreDefaults();
-    std::string getCPUname();
     RaplDefaults getDefaultCaps() const;
-    void setPowerCap(int, Domain = PowerCapDomain::PKG);
-    double getCurrentPowerCap() const;
-    AvailablePowerDomains getAvailablePowerDomains();
+    AvailableRaplPowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
-    void resetPerfCounters();
-    double getNumInstructionsSinceReset();
-    std::vector<int> pkgToFirstCoreMap_; // TODO getter for this, preferably delete
+    double getNumInstructionsSinceReset() const;
+    std::vector<int> getPkgToFirstCoreMap() const { return pkgToFirstCoreMap_; }
 
 private:
     void detectCPU();
@@ -79,20 +112,22 @@ private:
     void prepareRaplDirsFromAvailableDomains();
     void readAndStoreDefaultLimits();
     void initPerformanceCounters();
-    std::string mapCpuFamilyName(int& model);
+    std::string mapCpuFamilyName(int model) const;
     void setLongTimeWindow(int); // might be useless
+    void initRaplObjectsForEachPKG();
 
     int totalPackages_ {0};
     int totalCores_ {0};
     int model_ {-1};
     pcm::PCM* pcm_;
-    AvailablePowerDomains devicePowerProfile_;
+    AvailableRaplPowerDomains devicePowerProfile_;
     RaplDirs raplDirs_;
     RaplDefaults raplDefaultCaps_;
     static constexpr double DEFAULT_LIMIT {300.0};
-    double currentPowerCapPKG_ {DEFAULT_LIMIT};
+    double currentPowerLimitInWatts_ {DEFAULT_LIMIT};
     const std::string defaultLimitsFile_ {"./default_limits_dump.txt"};
-    pcm::SystemCounterState sysBeforeState_, sysAfterState_;
-    std::vector<pcm::CoreCounterState> beforeState_, afterState_;
-    std::vector<pcm::SocketCounterState> dummySocketStates_;
+    std::vector<int> pkgToFirstCoreMap_;
+    std::vector<Rapl> raplVec_;
+    pcm::SystemCounterState sysBeforeState_;
+    std::vector<pcm::CoreCounterState> beforeState_;
 };

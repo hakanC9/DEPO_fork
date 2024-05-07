@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -36,21 +36,41 @@
 #include "helpers/both_stream.hpp"
 #include "helpers/power_and_perf_result.hpp"
 #include "helpers/log.hpp"
+#include "device/device_state.hpp"
+#include "device/Device.hpp"
 
 #include <cuda.h>
 #include <nvml.h>
 
 
-class CudaDevice // this class should be named "cuda device container or sth like that as it stores all the devices"
+/**
+ * This class represents single CUDA device pointed by the deviceID
+ * during object construction. However, it stores all the device handles
+ * and it is able to read power or write power limit to any existing
+ * in the system CUDA device.
+ * By design at the moment the get/set power methods use only deviceID_
+ * which is a member of the object.
+ *
+ * FUTURE WORK:
+ * In the future this may change when, e.g., DEPO or StEP would consider
+ * multi-gpu support.
+*/
+class CudaDevice : public Device
 {
   public:
     CudaDevice(int devID = 0);
 
-    int getPowerLimit(unsigned deviceID);
-    void setPowerLimit(unsigned deviceID, int limitInWatts);
-    std::pair<unsigned, unsigned> getMinMaxLimitInWatts(unsigned deviceID);
-    void resetKernelCounterRegister();
-    double getCurrentPowerInWattsForDeviceID(); // this method shall have the input parameter "deviceID" back
+    double getPowerLimitInWatts() const override;
+    void setPowerLimitInMicroWatts(unsigned long limitInMicroW) override;
+    std::string getName() const override;
+
+    std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const override;
+    void reset() override;
+    double getCurrentPowerInWatts() const override;
+    unsigned long long int getPerfCounter() const;
+    void triggerPowerApiSample() override {}; // empty method since, NVIDIA GPU does not need to explicit trigger API sampling
+
+
 
   private:
     void initDeviceHandles();
@@ -60,51 +80,66 @@ class CudaDevice // this class should be named "cuda device container or sth lik
     std::vector<nvmlDevice_t> deviceHandles_;
 };
 
-using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
-struct NvidiaState
-{
-    NvidiaState() = delete;
-    NvidiaState(double pow, unsigned long long ker, TimePoint t) :
-        power_(pow), kernelsCount_(ker), time_(t)
-    {
-    }
-    double power_;
-    unsigned long long kernelsCount_;
-    TimePoint time_;
-};
+// class GpuDeviceState
+// {
+//   public:
+//     GpuDeviceState(std::shared_ptr<CudaDevice>& device);
 
-class GpuDeviceState
-{
-  public:
-    GpuDeviceState(std::shared_ptr<CudaDevice>& device);
+//     GpuDeviceState& sample();
+//     void resetState();
 
-    GpuDeviceState& sample();
-    PowAndPerfResult getCurrentPowerAndPerf(int deviceID) const;
-    double getEnergySinceReset() const;
-    void resetState();
 
-    template <class Resolution = std::chrono::milliseconds>
-    double getTimeSinceReset() const
-    {
-        return std::chrono::duration_cast<Resolution>(
-                    std::chrono::high_resolution_clock::now()  - timeOfLastReset_).count();
-    }
+//     /*
+//       getCurrentPowerAndPerf - needed mostly (only?) for logging purposes
 
-    template <class Resolution = std::chrono::milliseconds>
-    double getAbsoluteTimeSinceStart() const
-    {
-        return std::chrono::duration_cast<Resolution>(
-                    std::chrono::high_resolution_clock::now()  - absoluteStartTime_).count();
-    }
+//       returns the PowerAndPerfResult struct with the data based on the difference
+//       between next and current state. Such data is used for power log.
+//     */
+//     PowAndPerfResult getCurrentPowerAndPerf(int deviceID) const;
 
-  private:
-    TimePoint absoluteStartTime_;
-    TimePoint timeOfLastReset_;
-    std::shared_ptr<CudaDevice> gpu_;
-    NvidiaState prev_, curr_, next_;
-    double totalEnergySinceReset_ {0.0};
-};
+
+//     /*
+//       getEnergySinceReset - is used for the final evaluation of energy consumed
+
+//       returns the integrate of energy sampled since last Accumulator reset.
+//     */
+//     double getEnergySinceReset() const;
+
+
+//     /*
+//       getTimeSinceReset - is used for the final evaluation of time spent on computations
+
+//       returns the time difference between now and last Accumulator reset.
+//     */
+//     template <class Resolution = std::chrono::milliseconds>
+//     double getTimeSinceReset() const
+//     {
+//         return std::chrono::duration_cast<Resolution>(
+//                     std::chrono::high_resolution_clock::now()  - timeOfLastReset_).count();
+//     }
+
+
+//     /*
+//       getTimeSinceObjectCreation - used only for logging purposes.
+
+//       returns the absolute time since the creation of the device state accumulator. Needed
+//       for logging data used for power log creation.
+//     */
+//     template <class Resolution = std::chrono::milliseconds>
+//     double getTimeSinceObjectCreation() const
+//     {
+//         return std::chrono::duration_cast<Resolution>(
+//                     std::chrono::high_resolution_clock::now()  - absoluteStartTime_).count();
+//     }
+
+//   private:
+//     TimePoint absoluteStartTime_;
+//     TimePoint timeOfLastReset_;
+//     std::shared_ptr<CudaDevice> gpu_;
+//     PowerAndPerfState prev_, curr_, next_;
+//     double totalEnergySinceReset_ {0.0};
+// };
 
 class GpuEco : public EcoApi
 {
@@ -113,16 +148,17 @@ class GpuEco : public EcoApi
     virtual ~GpuEco();
 
     void idleSample(int sleepPeriodInMs) override;
-
     FinalPowerAndPerfResult runAppWithSampling(char* const* argv, int argc) override;
-    void staticEnergyProfiler(char* const* argv, int argc, BothStream& stream);
     FinalPowerAndPerfResult runAppWithSearch(
         char* const* argv,
         TargetMetric metric,
         SearchType searchType,
         int argc) override;
-
     void plotPowerLog() override;
+    std::string getDeviceName() const override { return gpu_->getName(); }
+
+    void staticEnergyProfiler(char* const* argv, int argc, BothStream& stream);
+
     void waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec);
 
     PowAndPerfResult getReferenceResult(const int referenceSampleTimeInMilliSec);
@@ -148,8 +184,9 @@ class GpuEco : public EcoApi
 
   private:
     std::shared_ptr<CudaDevice> gpu_;
-    std::unique_ptr<GpuDeviceState> deviceState_;
-    unsigned minPowerLimit_, maxPowerLimit_, defaultPowerLimit_;
+    std::unique_ptr<DeviceStateAccumulator> deviceState_;
+    unsigned minPowerLimit_, maxPowerLimit_;
+    double defaultPowerLimitInWatts_;
     int deviceID_;
     std::ofstream outPowerFile_;
     std::unique_ptr<BothStream> bout_;

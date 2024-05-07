@@ -1,7 +1,3 @@
-#include <unistd.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 /*
    Copyright 2022, Adam Krzywaniak.
 
@@ -18,6 +14,10 @@
    limitations under the License.
 */
 
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <string.h>
 #include <iostream>
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
 	std::vector<pcm::CoreCounterState> BeforeState, AfterState;
 	std::vector<pcm::SocketCounterState> DummySocketStates;
 
-    DeviceState ds(std::make_shared<Device>());
+    DeviceStateAccumulator ds(std::make_shared<IntelDevice>());
 	int ms_pause = 100;       // sample every 100ms
 	std::string outFileName = "./rapl.csv";
 	std::ofstream outfile (outFileName, std::ios::out | std::ios::trunc);
@@ -86,21 +86,23 @@ int main(int argc, char *argv[]) {
 				<< ds.getCurrentPower(Domain::PP0) << "\t"
 				<< ds.getCurrentPower(Domain::PP1) << "\t"
 				<< ds.getCurrentPower(Domain::DRAM) << "\t"
-				<< ds.getTotalTime() << std::endl;
+				<< ds.getTimeSinceReset() << std::endl;
 				waitpid(childProcId, &status, WNOHANG);	
 			}
 			wait(&status);
-			
+
+			double totalTimeInSeconds = ds.getTimeSinceReset();
+
 			std::cout << std::endl
-				<< "\t PKG Total Energy:\t" << ds.getTotalEnergy(Domain::PKG) << " J" << std::endl
-				<< "\t PP0 Total Energy:\t" << ds.getTotalEnergy(Domain::PP0) << " J" << std::endl
-				<< "\t PP1 Total Energy:\t" << ds.getTotalEnergy(Domain::PP1) << " J" << std::endl
-				<< "\tDRAM Total Energy:\t" << ds.getTotalEnergy(Domain::DRAM) << " J" << std::endl
-				<< "\t PKG Average Power:\t" << ds.getTotalAveragePower(Domain::PKG) << " W" << std::endl
-				<< "\t PP0 Average Power:\t" << ds.getTotalAveragePower(Domain::PP0) << " W" << std::endl
-				<< "\t PP1 Average Power:\t" << ds.getTotalAveragePower(Domain::PP1) << " W" << std::endl
-				<< "\tDRAM Average Power:\t" << ds.getTotalAveragePower(Domain::DRAM) << " W" << std::endl
-				<< "\tTotal time:\t\t" << ds.getTotalTime() << " sec" << std::endl;
+				<< "\t PKG Total Energy:\t" << ds.getEnergySinceReset() << " J" << std::endl
+				// << "\t PP0 Total Energy:\t" << ds.getEnergySinceReset(Domain::PP0) << " J" << std::endl
+				// << "\t PP1 Total Energy:\t" << ds.getEnergySinceReset(Domain::PP1) << " J" << std::endl
+				// << "\tDRAM Total Energy:\t" << ds.getEnergySinceReset(Domain::DRAM) << " J" << std::endl
+				<< "\t PKG Average Power:\t" << ds.getEnergySinceReset() / totalTimeInSeconds << " W" << std::endl
+				// << "\t PP0 Average Power:\t" << ds.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds << " W" << std::endl
+				// << "\t PP1 Average Power:\t" << ds.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds << " W" << std::endl
+				// << "\tDRAM Average Power:\t" << ds.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds << " W" << std::endl
+				<< "\tTotal time:\t\t" << totalTimeInSeconds << " sec" << std::endl;
 		}
 	} else {
 		std::cerr << "fork failed" << std::endl;

@@ -59,6 +59,16 @@ The details of the tool for CPU may be found in the paper:
 >
 >https://doi.org/10.1002/spe.3139
 
+
+The details of the tool for GPU may be found in the paper:
+
+>Adam Krzywaniak, Paweł Czarnul, Jerzy Proficz (2023)
+>
+> *Dynamic GPU power capping with online performance tracing for energy efficient GPU computing using DEPO tool, Future Generation Computer Systems, Volume 145, 2023, Pages 396-414, ISSN 0167-739X.*
+>
+>https://doi.org/10.1016/j.future.2023.03.041.
+
+
 # Build and usage
 It is recommended to create a build directory.
 ```
@@ -69,13 +79,10 @@ make
 ```
 
 # Known dependencies
-
-Dependency added on Jan 2020:
 ```
-sudo apt-get install libboost-all-dev
+sudo apt-get update && sudo apt-get install build-essential cmake gnuplot
+sudo apt-get install libboost-all-dev graphviz
 ```
-
-Since Feb 2020 project uses cmake >= v 3.10.
 
 # Exemplary usage
 
@@ -144,3 +151,24 @@ If you find this code usefull please cite any of our papers which contributed to
         doi = {https://doi.org/10.1002/spe.3139},
         year = {2022}
         }
+
+4. Dynamic Energy-Performance Optimizer (DEPO) for GPU:
+
+        @article{KRZYWANIAK2023396,
+        author = {Adam Krzywaniak and Pawe{\l} Czarnul and Jerzy Proficz},
+        doi = {https://doi.org/10.1016/j.future.2023.03.041},
+        issn = {0167-739X},
+        journal = {Future Generation Computer Systems},
+        keywords = {Energy-aware computing, High-performance computing, Green computing, Machine learning, GPU energy optimization},
+        pages = {396-414},
+        title = {Dynamic GPU power capping with online performance tracing for energy efficient GPU computing using DEPO tool},
+        volume = {145},
+        year = {2023},
+        }
+
+
+
+https://developer.nvidia.com/cuda-downloads
+
+
+DEPO GPU [requires CUDA compute capabilities 7.0 or higher](https://docs.nvidia.com/cupti/main/main.html#cupti-profiling-api), what means that architectures older than Volta (e.g., Pascal) are not supported.

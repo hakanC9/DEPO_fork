@@ -17,23 +17,81 @@
 #pragma once
 
 #include "Device.hpp"
-#include "../power_if/Rapl.hpp"
+#include "../helpers/power_and_perf_result.hpp"
 
-class DeviceState {
+using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
+
+struct PowerAndPerfState
+{
+    PowerAndPerfState() = delete;
+    PowerAndPerfState(double pow, unsigned long long ker, TimePoint t) :
+        power_(pow), kernelsCount_(ker), time_(t)
+    {
+    }
+    double power_;
+    unsigned long long kernelsCount_;
+    TimePoint time_;
+};
+
+class DeviceStateAccumulator
+{
 public:
-    DeviceState(std::shared_ptr<Device>);
-    ~DeviceState() {}
-    double getTotalAveragePower(Domain d);
-    double getTotalEnergy(Domain d);
-    std::vector<double> getTotalEnergyVec(Domain d);
-    double getTotalTime();
-    void sample();
-    void resetDevice();
-    double getPkgMaxPower();
+    DeviceStateAccumulator(std::shared_ptr<Device>);
+    ~DeviceStateAccumulator() {}
+
+    /*
+      getCurrentPowerAndPerf - needed mostly (only?) for logging purposes
+
+      returns the PowerAndPerfResult struct with the data based on the difference
+      between next and current state. Such data is used for power log.
+    */
+    PowAndPerfResult getCurrentPowerAndPerf() const;
+
+    /*
+      getEnergySinceReset - is used for the final evaluation of energy consumed
+
+      returns the integrate of energy sampled since last Accumulator reset.
+    */
+    double getEnergySinceReset() const;
+
+    /*
+      getTimeSinceReset - is used for the final evaluation of time spent on computations
+
+      returns the time difference between now and last Accumulator reset.
+    */
+    template <class Resolution = std::chrono::milliseconds>
+    double getTimeSinceReset() const
+    {
+        return std::chrono::duration_cast<Resolution>(
+                    std::chrono::high_resolution_clock::now()  - timeOfLastReset_).count();
+    }
+
+    /*
+      getTimeSinceObjectCreation - used only for logging purposes.
+
+      returns the absolute time since the creation of the device state accumulator. Needed
+      for logging data used for power log creation.
+    */
+    template <class Resolution = std::chrono::milliseconds>
+    double getTimeSinceObjectCreation() const
+    {
+        return std::chrono::duration_cast<Resolution>(
+                    std::chrono::high_resolution_clock::now()  - absoluteStartTime_).count();
+    }
+
+    // Temporary disabled
+    // ----------------------------------------------------------------------------------------
+    // std::vector<double> getTotalEnergyVec(Domain d);
+
+    DeviceStateAccumulator& sample();
+    void resetState();
     double getCurrentPower(Domain d);
     double getPerfCounterSinceReset();
 
 private:
+    TimePoint absoluteStartTime_;
+    TimePoint timeOfLastReset_;
     std::shared_ptr<Device> device_;
-    std::vector<Rapl> raplVec_;
+    PowerAndPerfState prev_, curr_, next_;
+    double totalEnergySinceReset_ {0.0};
 };
