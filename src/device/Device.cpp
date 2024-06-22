@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include <iostream>
 #include <fstream>
 #include <boost/filesystem.hpp>
+#include <chrono>
 
 
 #define MAX_CPUS		1024
@@ -35,7 +36,6 @@ static inline int readLimitFromFile (std::string fileName) {
             limit = atoi(line.c_str());
         }
         limitFile.close();
-        std::cout << "limit " << limit << std::endl;
     } else {
         std::cerr << "cannot read the limit file: " << fileName << "\n"
                   << "file not open\n";
@@ -56,14 +56,15 @@ static inline void writeLimitToFile (std::string fileName, int limit) {
 
 IntelDevice::IntelDevice()
 {
-    std::cout << "[DEBUG]: IntelDevice constructor called!\n";
+    // std::cout << "[DEBUG]: IntelDevice constructor called!\n";
     detectCPU();
     detectPackages();
     detectPowerCapsAvailability();
-	prepareRaplDirsFromAvailableDomains();
-	readAndStoreDefaultLimits();
-	initPerformanceCounters();
+    prepareRaplDirsFromAvailableDomains();
+    readAndStoreDefaultLimits();
+    initPerformanceCounters();
     initRaplObjectsForEachPKG();
+    checkIdlePowerConsumption();
 }
 
 void IntelDevice::initRaplObjectsForEachPKG()
@@ -88,9 +89,8 @@ std::pair<unsigned, unsigned> IntelDevice::getMinMaxLimitInWatts() const
     // research the actual max available power will be more useful. It needs to be noted
     // that CPU working above TDP would require much more cooling and would throttle much faster.
     //
-    // For MIN power it returns 0 as it does not matter at the moment for CPU.
-    // CPU power and performance optimization is relative to idle power consumption measured in ECO class.
-    return std::make_pair(0, (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000);
+    // For MIN power it returns idle power consumption mesured for the CPU PKG at the object creation.
+    return std::make_pair(idlePowerConsumption_, (totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower) / 1000000);
 }
 
 std::string IntelDevice::getName() const
@@ -398,12 +398,12 @@ void IntelDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW)
 {
     Domain dom = PowerCapDomain::PKG; // TODO: the domain is hardcoded so that it can fit generic API for CPU and GPU
                                       //       It should be considered to drop support for PP0, PP1 domains and to
-                                      //       have separet API for DRAM domain.
+                                      //       have separate API for DRAM domain.
     auto&& numPkgs = totalPackages_; // packagesDirs_.size();
     auto singlePKGcap = limitInMicroW / numPkgs;
     switch (dom) {
         case PowerCapDomain::PKG :
-            setLongTimeWindow(raplDefaultCaps_.defaultConstrPKG_->longWindow/10); // set to 100ms
+            setLongTimeWindow(int(10e4)); // set to 100ms
             for (auto& curentPkgDir : raplDirs_.packagesDirs_) {
                 writeLimitToFile(curentPkgDir + raplDirs_.pl0dir_, singlePKGcap);
                 //TODO: rework below temporary solution
@@ -501,4 +501,29 @@ void IntelDevice::triggerPowerApiSample()
     {
         rapl.sample();
     }
+}
+
+void IntelDevice::checkIdlePowerConsumption()
+{
+    // TODO: pass below two values through config file
+    int idleCheckTimeSeconds = 10;
+    int msPause = 100;
+    std::cout << "\nChecking idle average power consumption for " << idleCheckTimeSeconds << "s.\n";
+    double energy = 0.0;
+    reset();
+    const auto start = std::chrono::high_resolution_clock::now();
+    for (auto i = 0; i < idleCheckTimeSeconds * 1000; i += msPause)
+    {
+        if (!(i%1000)) std::cout << "." << std::flush;
+        auto tmp = std::chrono::high_resolution_clock::now();
+        usleep(msPause * 1000);
+        triggerPowerApiSample();
+        auto timeDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - tmp).count();
+        energy += timeDeltaMs * getCurrentPowerInWatts() / 1000;
+    }
+    double totalTimeInSeconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::high_resolution_clock::now() - start).count();
+    std::cout << "\r";
+    idlePowerConsumption_ = energy / totalTimeInSeconds;
+    std::cout << std::fixed << std::setprecision(3)
+              << "\n[INFO] IntelDevice idle average power consumption for CPU PKG domain is " << idlePowerConsumption_ << " W\n";
 }

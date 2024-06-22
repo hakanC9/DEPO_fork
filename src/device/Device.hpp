@@ -115,6 +115,7 @@ private:
     std::string mapCpuFamilyName(int model) const;
     void setLongTimeWindow(int); // might be useless
     void initRaplObjectsForEachPKG();
+    void checkIdlePowerConsumption();
 
     int totalPackages_ {0};
     int totalCores_ {0};
@@ -125,6 +126,7 @@ private:
     RaplDefaults raplDefaultCaps_;
     static constexpr double DEFAULT_LIMIT {300.0};
     double currentPowerLimitInWatts_ {DEFAULT_LIMIT};
+    double idlePowerConsumption_;
     const std::string defaultLimitsFile_ {"./default_limits_dump.txt"};
     std::vector<int> pkgToFirstCoreMap_;
     std::vector<Rapl> raplVec_;
