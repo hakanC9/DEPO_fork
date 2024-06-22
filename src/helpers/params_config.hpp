@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 #pragma once
 
 #include <string>
-#include <map>
 
 class ParamsConfig {
 public:
@@ -38,8 +37,7 @@ public:
     int repeatTuningPeriodInSec_ {10}; // seconds
     double k_ {1.0};
     bool doWaitPhase_ {true};
-    std::map <std::string, unsigned> configParamsMap_;
+    void printConfigExplained();
 private:
-    void readConfigFile();
-    void loadParamsFromMap(std::map <std::string, unsigned>&);
+    void loadConfig();
 };
