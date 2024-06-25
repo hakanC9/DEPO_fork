@@ -74,7 +74,7 @@ int main (int argc, char *argv[]) {
 	watchdog.close();
 
 
-    Eco eco(std::make_shared<IntelDevice>());
+    Eco eco(std::make_shared<IntelDevice>(), TriggerType::SINGLE_TUNING_WITH_WAIT);
     std::ofstream outResultFile (eco.getResultFileName(), std::ios::out | std::ios::trunc);
 
     BothStream bout(outResultFile);
@@ -128,7 +128,7 @@ int main (int argc, char *argv[]) {
     bout.flush();
     outResultFile.close();
 
-    eco.plotPowerLog();
+    eco.plotPowerLog(std::nullopt);
 
     // Plot result file automatically
     std::string imgFileName = eco.getResultFileName();

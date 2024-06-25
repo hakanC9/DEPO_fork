@@ -53,4 +53,25 @@ struct PowAndPerfResult {
     double averageMemoryPowerInWatts_ {0.01};
     double filteredPowerOfLimitedDomainInWatts_ {0.01}; // assume that either Core or Memory is limited
     double myPlusMetric_ {1.0};
+
+    friend PowAndPerfResult& operator+=(PowAndPerfResult& left, const PowAndPerfResult& right)
+    {
+        left.instructionsCount_ += right.instructionsCount_;
+        left.periodInSeconds_ += right.periodInSeconds_;
+        left.energyInJoules_ += right.energyInJoules_;
+        left.averageCorePowerInWatts_ = left.energyInJoules_ / left.periodInSeconds_;
+        // INFO:
+        // implementing below parameters handling only for the compatibility, but for now
+        // it is expected that only abowe (instructions, time, energy and average power)
+        // will be informative enough when accumulating several PowAndPerfResults
+        left.appliedPowerCapInWatts_ += right.appliedPowerCapInWatts_;
+        left.appliedPowerCapInWatts_ /= 2;
+        left.filteredPowerOfLimitedDomainInWatts_ += right.filteredPowerOfLimitedDomainInWatts_;
+        left.filteredPowerOfLimitedDomainInWatts_ /= 2;
+        left.averageMemoryPowerInWatts_ += right.averageMemoryPowerInWatts_;
+        left.averageMemoryPowerInWatts_ /= 2;
+
+        return left;
+    }
+
 };

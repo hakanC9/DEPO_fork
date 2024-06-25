@@ -154,7 +154,7 @@ class GpuEco : public EcoApi
         TargetMetric metric,
         SearchType searchType,
         int argc) override;
-    void plotPowerLog() override;
+    void plotPowerLog(std::optional<FinalPowerAndPerfResult>) override;
     std::string getDeviceName() const override { return gpu_->getName(); }
 
     void staticEnergyProfiler(char* const* argv, int argc, BothStream& stream);

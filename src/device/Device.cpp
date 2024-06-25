@@ -403,7 +403,7 @@ void IntelDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW)
     auto singlePKGcap = limitInMicroW / numPkgs;
     switch (dom) {
         case PowerCapDomain::PKG :
-            setLongTimeWindow(int(10e4)); // set to 100ms
+            setLongTimeWindow(int(2*1e5)); // set to 200ms
             for (auto& curentPkgDir : raplDirs_.packagesDirs_) {
                 writeLimitToFile(curentPkgDir + raplDirs_.pl0dir_, singlePKGcap);
                 //TODO: rework below temporary solution

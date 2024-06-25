@@ -74,6 +74,7 @@ void ParamsConfig::loadConfig()
     k_ = config["k"].as<double>();
     repeatTuningPeriodInSec_ = config["repeatTuningPeriodInSec"].as<int>();
     doWaitPhase_ = config["doWaitPhase"].as<int>();
+    referenceRunMultiplier_ = config["referenceRunMultiplier"].as<int>();
     usTestPhasePeriod_ = msTestPhasePeriod_ * 1000;
     // return cfg;
 }

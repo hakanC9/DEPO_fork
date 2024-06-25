@@ -197,7 +197,7 @@ int main (int argc, char *argv[])
     }
     else
     {
-        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>());
+        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>(), TriggerType::SINGLE_TUNING_WITH_WAIT);
     }
     std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
     BothStream bout(outResultFile);
@@ -209,13 +209,12 @@ int main (int argc, char *argv[])
 
     FinalPowerAndPerfResult result;
     result = eco->runAppWithSearch(argv, metric, search, argc);
-    std::cout << "\n"
-              << "E: " << result.energy << " J\n"
-              << "t: " << result.time_.totalTime_ << " s\n"
-              << "P: " << result.pkgPower << " W\n";
+    bout << std::fixed << std::setprecision(3)
+         << "#Energy[J]\ttime[s]\tPower[W]\n"
+         << result.energy << "\t" << result.time_.totalTime_ << "\t" << result.pkgPower <<"\n";
 
     outResultFile.close();
-    eco->plotPowerLog();
+    eco->plotPowerLog(result);
 
     if (gpuID.has_value())
     {

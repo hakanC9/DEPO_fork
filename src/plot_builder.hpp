@@ -55,7 +55,8 @@ public:
     void plotTmpGSS(std::string);
     void plotEPet(std::string);
     void plotEPall(std::string);
-    void setPlotTitle(std::string title);
+    void setPlotTitle(std::string title, int fontSize = 20);
+    void setSimpleSubtitle(std::string subtitleText, int fontSize=16);
     void submitPlot();
     void setXlabel(std::string xLabel, int fontSize = 20);
     void setYlabel(std::string xLabel, int fontSize = 20);

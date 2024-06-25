@@ -43,7 +43,7 @@ int main (int argc, char *argv[]) {
         }
         else
         {
-        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>());
+        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>(), TriggerType::NO_TUNING);
         }
     }
 
@@ -81,7 +81,7 @@ int main (int argc, char *argv[]) {
 
     bout.flush();
     outResultFile.close();
-    eco->plotPowerLog();
+    eco->plotPowerLog(std::nullopt);
 
     // Plot result file automatically
     std::string imgFileName = eco->getResultFileName();

@@ -4,6 +4,8 @@ project(phd CXX)
 set(CMAKE_CXX_STANDARD 17)
 include_directories(/usr/local/cuda/include)
 include(CMakeLists.txt.in)
+find_package(yaml-cpp REQUIRED)
+
 
 # build eco library from sources
 add_library(
@@ -59,6 +61,7 @@ set(COMMON_LIBS
     boost_program_options
     nvidia-ml
     cuda
+    yaml-cpp
     )
 
 # build Static Energy Profiler

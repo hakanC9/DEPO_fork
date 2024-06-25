@@ -43,7 +43,7 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
     prev_ = curr_;
     curr_ = next_;
     // ------------------------------------------------------------------
-    // this is specific to Intel RAPL power/energy measurements
+    // this is specific to Intel RAPL power/energy measurements:
     // in order to have any valid readings, RAPL must be sampled
     // preety frequently so that the energy counter reading is updated
     // before the couter overflow.

@@ -171,10 +171,15 @@ void PlotBuilder::setLegend(Legend option) {
     }
 }
 
-void PlotBuilder::setPlotTitle(std::string title) {
+void PlotBuilder::setPlotTitle(std::string title, int fontSize) {
     *gp_ << "set title \""
        << title
-       << "\"font \",25\"\n";
+       << "\"font \"," << fontSize << "\"\n";
+}
+
+void PlotBuilder::setSimpleSubtitle(std::string subtitleText, int fontSize)
+{
+    *gp_ << "set label 1 \"" << subtitleText << "\" font \"," << fontSize << "\" at screen 0.5, 0.86 center\n";
 }
 
 void PlotBuilder::setXlabel(std::string xLabel, int fontSize) {

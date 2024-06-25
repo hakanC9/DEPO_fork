@@ -19,6 +19,7 @@
 #include <chrono>
 #include <memory>
 #include <set>
+#include <optional>
 // Workaround: below two has to be included in such order to ensure no warnings
 //             about macro redefinitions. Some of the macros in Rapl.hpp are already
 //             defined in types.h included by cpucounters.h but not all of them.
@@ -47,13 +48,41 @@ void validateExecStatus(int status) {
     }
 }
 
+enum class TriggerType
+{
+  NO_TUNING,
+  SINGLE_IMMEDIATE_TUNING,
+  SINGLE_TUNING_WITH_WAIT,
+  PERIODIC_IMMEDIATE_TUNING,
+  PERIODIC_TUNING_WITH_WAIT,
+  EXTERNAL_TRIGGER_FOR_TUNING,
+};
+
+class Trigger
+{
+  public:
+    Trigger() = delete;
+    Trigger(TriggerType tt) :
+      type_(tt) {}
+    ~Trigger() = default;
+
+    bool checkTunningPhaseTrigger()
+    {
+      return true;
+    }
+
+  private:
+    TriggerType type_;
+};
+
+
 class EcoApi
 {
   public:
     virtual void idleSample(int) = 0;
     virtual FinalPowerAndPerfResult runAppWithSampling(char* const*, int) = 0;
     virtual FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int) = 0;
-    virtual void plotPowerLog() = 0;
+    virtual void plotPowerLog(std::optional<FinalPowerAndPerfResult>) = 0;
     virtual std::string getDeviceName() const = 0;
 
     double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
@@ -64,7 +93,7 @@ class EcoApi
     EcoApi() = default;
     virtual ~EcoApi() = default;
   protected:
-    ParamsConfig cfg_; // stores defaults values of params or reads it from params.conf
+    ParamsConfig cfg_; // stores defaults values of params or reads it from config.yaml
     std::string outResultFileName_;
     std::string outPowerFileName_;
 };
@@ -79,16 +108,16 @@ class Eco : public EcoApi
       TargetMetric,
       SearchType,
       int = 1) override;
-    void plotPowerLog() override;
+    void plotPowerLog(std::optional<FinalPowerAndPerfResult>) override;
     std::string getDeviceName() const override { return device_->getName(); }
 
     void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
     void referenceRunWithoutCaps(char* const*);
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
-    void storeReferenceRun(FinalPowerAndPerfResult&);
+    // void storeReferenceRun(FinalPowerAndPerfResult&);
 
-    Eco(std::shared_ptr<IntelDevice>);
+    Eco(std::shared_ptr<IntelDevice>, TriggerType);
     virtual ~Eco();
 
   protected:
@@ -103,6 +132,7 @@ class Eco : public EcoApi
         SMA_20_S
     };
   private:
+    std::unique_ptr<Trigger> trigger_;
     std::map<FilterType, DataFilter> smaFilters_;
     FilterType activeFilter_ {FilterType::SMA100};
     DataFilter filter2order_;
@@ -112,7 +142,7 @@ class Eco : public EcoApi
     bool optimizationTrigger_ {false};
 
     DeviceStateAccumulator devStateGlobal_;
-    DeviceStateAccumulator devStateLocal_;
+    // DeviceStateAccumulator devStateLocal_;
     std::vector<FinalPowerAndPerfResult> fullAppRunResultsContainer_;
 
     WatchdogStatus defaultWatchdog;
@@ -123,13 +153,11 @@ class Eco : public EcoApi
     double getFilteredPower();
     void modifyWatchdog(WatchdogStatus);
     WatchdogStatus readWatchdog();
-    void raplSample();
+    void logPowerToFile();
     std::string generateUniqueResultDir();
     std::vector<int> generateVecOfPowerCaps(Domain = PowerCapDomain::PKG);
     void singleAppRunAndPowerSample(char* const*);
     FinalPowerAndPerfResult multipleAppRunAndPowerSample(char* const*, int);
-    void checkIdlePowerConsumption();
-    void localPowerSample(int);
     PowAndPerfResult checkPowerAndPerformance(int);
     PowAndPerfResult setCapAndMeasure(int, int);
     void justSample(int timeS);
@@ -141,6 +169,4 @@ class Eco : public EcoApi
     int& adjustHighPowLimit(PowAndPerfResult, int&);
     int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
     int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
-
-    static constexpr int REFERENCE_RUN_MULTIPLIER {3};
 };

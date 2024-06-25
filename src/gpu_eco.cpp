@@ -451,10 +451,13 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
     {
         if (childProcId == 0)
         {
+            std::cout << "ENV1 value: " << getenv("INJECTION_KERNEL_COUNT")
+                  << "\nENV2 value: " << getenv("CUDA_INJECTION64_PATH") << "\n";
             std::cout << "||||| my pid " << getpid() << " parent " << getppid() << std::endl;
-            int exec_status = system(command.c_str());
+            // int execStatus = system(command.c_str());
+            int execStatus = execvp(argv[1], argv+1);
 
-            validateExecStatus(exec_status);
+            validateExecStatus(execStatus);
             exit(0);
         }
         else
@@ -501,7 +504,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
         0.0);
 }
 
-void GpuEco::plotPowerLog()
+void GpuEco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results)
 {
     bout_->flush();
     outPowerFile_.close();
@@ -510,7 +513,17 @@ void GpuEco::plotPowerLog()
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 4,
                                     imgFileName.end(),
                                     ".png"));
-    p.setPlotTitle("Power log - " + getDeviceName());
+    p.setPlotTitle("Power log - " + getDeviceName(), 16);
+    if(results)
+    {
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(3)
+        << "Total E: " << results->energy << " J"
+        << "    Total time: " << results->time_.totalTime_ << " s"
+        << "    av. Power: " << results->pkgPower << " W";
+        // << "    last Powercap: " << results->powercap << " W";
+        p.setSimpleSubtitle(ss.str(), 12);
+    }
     Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
     Series currPower (outPowerFileName_, 1, 3, "P[W]");
     Series currENG (outPowerFileName_, 1, 7, "ENG");

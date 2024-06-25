@@ -27,8 +27,8 @@
 
 static constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
-Eco::Eco(std::shared_ptr<IntelDevice> d) :
-    filter2order_(100), device_(d), devStateGlobal_(d), devStateLocal_(d)
+Eco::Eco(std::shared_ptr<IntelDevice> d, TriggerType tt) :
+    filter2order_(100), device_(d), devStateGlobal_(d), trigger_(std::make_unique<Trigger>(tt))
 {
 
     // include in DirBulder
@@ -55,7 +55,6 @@ Eco::Eco(std::shared_ptr<IntelDevice> d) :
     smaFilters_.emplace(FilterType::SMA_5_S, 5000 / cfg_.msPause_);
     smaFilters_.emplace(FilterType::SMA_10_S, 10000 / cfg_.msPause_);
     smaFilters_.emplace(FilterType::SMA_20_S, 20000 / cfg_.msPause_);
-    checkIdlePowerConsumption();
     defaultPowerLimitInWatts_ = device_->getPowerLimitInWatts();
     std::cout << "[DEBUG] defaultPowerLimitInWatts_ stored: " << defaultPowerLimitInWatts_ << std::endl;
 }
@@ -111,8 +110,9 @@ static inline void writeLimitToFile (std::string fileName, int limit) {
 std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
     std::vector<int> powerLimitsVec;
 
-    int lowPowLimit_uW = (int)(idleAvPow_[dom] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
-    int highPowLimit_uW = device_->getMinMaxLimitInWatts().second * 1000000;//(int)(highPowW * 1000000 + 0.5); // same
+    const auto minmax = device_->getMinMaxLimitInWatts();
+    unsigned lowPowLimit_uW = minmax.first * 1000000;
+    unsigned highPowLimit_uW = minmax.second * 1000000;
 
     int step = ((highPowLimit_uW - lowPowLimit_uW)/ 100) * cfg_.percentStep_;
     for (int limit_uW = highPowLimit_uW; limit_uW > lowPowLimit_uW; limit_uW -= step) {
@@ -130,9 +130,8 @@ void Eco::storeDataPointToFilters(double currPower) {
     }
 }
 
-void Eco::raplSample() {
-    devStateGlobal_.sample();
-    pprevSMA_ = prevSMA_;
+void Eco::logPowerToFile()
+{
     filter2order_.storeDataPoint(smaFilters_.at(FilterType::SMA_20_S).getSMA());
     auto currPower = devStateGlobal_.getCurrentPower(Domain::PKG);
     storeDataPointToFilters(currPower);
@@ -153,28 +152,6 @@ void Eco::raplSample() {
     }
 }
 
-void Eco::checkIdlePowerConsumption() {
-    std::cout << "\nChecking idle average power consumption for " << cfg_.idleCheckTime_ << "s.\n";
-    for (auto i = 0; i < cfg_.idleCheckTime_ * 1000; i += cfg_.msPause_) {
-        if (!(i%1000)) std::cout << "." << std::flush;
-        raplSample();
-        usleep(cfg_.msPause_ * 1000);
-    }
-    std::cout << FLUSH_AND_RETURN;
-    // TODO: assign structure object, not each element separately
-    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
-
-    idleAvPow_[Domain::PKG] = devStateGlobal_.getEnergySinceReset() / totalTimeInSeconds;
-    // idleAvPow_[Domain::PP0] = devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds;
-    // idleAvPow_[Domain::PP1] = devStateGlobal_.getEnergySinceReset(Domain::PP1) / totalTimeInSeconds;
-    // idleAvPow_[Domain::DRAM] = devStateGlobal_.getEnergySinceReset(Domain::DRAM) / totalTimeInSeconds;
-    std::cout << std::fixed << std::setprecision(3)
-              << "\nIdle average power consumption:\n"
-              << "\t PKG: " << idleAvPow_[Domain::PKG] << " W\n"
-              << "\t PP0: " << idleAvPow_[Domain::PP0] << " W\n"
-              << "\t PP1: " << idleAvPow_[Domain::PP1] << " W\n"
-              << "\tDRAM: " << idleAvPow_[Domain::DRAM] << " W\n";
-}
 
 void Eco::singleAppRunAndPowerSample(char* const* argv) {
     devStateGlobal_.resetState();
@@ -192,7 +169,8 @@ void Eco::singleAppRunAndPowerSample(char* const* argv) {
             if(cfg_.powerSampleOn_) {
                 while (status) {
                     usleep(cfg_.msPause_ * 1000);
-                    raplSample();
+                    devStateGlobal_.sample();
+                    logPowerToFile();
                     waitpid(childProcId, &status, WNOHANG);
                 }
             }
@@ -215,29 +193,26 @@ void Eco::justSample(int timeS) {
     }
 }
 
-void Eco::localPowerSample(int usPeriod) {
+
+PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
+{
     auto pause = cfg_.msPause_ * 1000;
-    while (usPeriod > 0){
+    usleep(pause);
+    devStateGlobal_.sample();
+    auto resultAccumulator = devStateGlobal_.getCurrentPowerAndPerf();
+    // std::cout << "\n[INFO] Firstt data point " << resultAccumulator << std::endl;
+    while (usPeriod > pause){
         usleep(pause);
-        raplSample();
-        devStateLocal_.sample();
+        devStateGlobal_.sample();
+        logPowerToFile();
+        auto tmp = devStateGlobal_.getCurrentPowerAndPerf();
+        resultAccumulator += tmp;
+        // std::cout << "[INFO] Single data point " << tmp << std::endl;
         usPeriod -= pause;
     }
-}
+    // std::cout << "[INFO] Finall data point " << resultAccumulator << std::endl;
 
-PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod) {
-    devStateLocal_.resetState();
-    localPowerSample(usPeriod);
-    double timeInSeconds = (double)usPeriod / 10e6;
-    double energyInJoules = devStateLocal_.getEnergySinceReset();
-
-    return PowAndPerfResult(devStateLocal_.getPerfCounterSinceReset(),
-                            timeInSeconds,
-                            device_->getPowerLimitInWatts(),
-                            energyInJoules,
-                            energyInJoules / timeInSeconds, // Joules / seconds = Watts
-                            0.0, // DRAM power - TBD
-                            getFilteredPower());
+    return resultAccumulator;
 }
 
 double Eco::getFilteredPower() {
@@ -245,7 +220,8 @@ double Eco::getFilteredPower() {
 }
 
 PowAndPerfResult Eco::setCapAndMeasure(int cap,
-                                       int usPeriod) {
+                                       int usPeriod)
+{
     device_->setPowerLimitInMicroWatts(cap);
     return checkPowerAndPerformance(usPeriod);
 }
@@ -277,7 +253,7 @@ void logCurrentRangeGSS(int a, int leftCandidate, int rightCandidate, int b) {
 
 void Eco::reportResult(double waitTime, double testTime) {
     auto&& totalE = devStateGlobal_.getEnergySinceReset();
-    auto&& totalTime = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
+    auto&& totalTime = devStateGlobal_.getTimeSinceReset<std::chrono::milliseconds>() / 1000.0;
     std::cout << "Total E: " << totalE;
     // ----------------------------------------------------------------------------------------
     // Below code is temporary disabled as it uses method specific to some
@@ -412,10 +388,12 @@ int Eco::linearSearchForBestPowerCap(
     auto currBestResult = firstResult;
     int step = ((highLimit_uW - lowLimit_uW)/ 100) * cfg_.percentStep_;
 
-    for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step) {
+    for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step)
+    {
         auto papResult = setCapAndMeasure(limit_uW, cfg_.usTestPhasePeriod_);
         std::cout << logCurrentResultLine(papResult, firstResult, cfg_.k_);
-        if (currBestResult.isRightBetter(papResult, metric)) {
+        if (currBestResult.isRightBetter(papResult, metric))
+        {
             currBestResult = std::move(papResult);
             bestCap = limit_uW;
         }
@@ -485,7 +463,6 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
     int fd = open("redirected.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
     if (fd < 0) { perror("open"); abort(); }
     // ----------------------------------------------------------------------------
-
     devStateGlobal_.resetState();
 
     double waitTime = 0.0, testTime = 0.0;
@@ -498,8 +475,9 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         }
         else  // parent process
         {
-            int lowPowLimit_uW = (int)(idleAvPow_[PowerCapDomain::PKG] * 1000000 + 0.5); // add 0.5 to round-up double while casting to int
-            int highPowLimit_uW = device_->getMinMaxLimitInWatts().second * 1000000;//(int)(devStateGlobal_.getPkgMaxPower() * 1000000 + 0.5); // same
+            const auto minmax = device_->getMinMaxLimitInWatts();
+            int lowPowLimit_uW = minmax.first * 1000000;
+            int highPowLimit_uW = minmax.second * 1000000;
             int status = 1;
             printHeader();
             if (cfg_.doWaitPhase_)
@@ -511,8 +489,8 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
             //----------------------------------------------------------------------------
             while (status)
             {
-                auto referenceResult = checkPowerAndPerformance(REFERENCE_RUN_MULTIPLIER * cfg_.usTestPhasePeriod_);
-                int bestCap;
+                auto referenceResult = checkPowerAndPerformance(cfg_.referenceRunMultiplier_ * cfg_.usTestPhasePeriod_);
+                int bestCap = -1;
                 testTime += measureDuration([&, this] {
                     bestCap = testPhase(highPowLimit_uW,
                                         lowPowLimit_uW,
@@ -535,9 +513,10 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         // return 1;
     }
     reportResult(waitTime, testTime);
-    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::milliseconds>() / 1000.0;
+    std::cout << "[INFO] actual total time " << totalTimeInSeconds << "\n";
 
-    return FinalPowerAndPerfResult(device_->getMinMaxLimitInWatts().second,
+    return FinalPowerAndPerfResult(0.000, // TODO: fix it
                                 devStateGlobal_.getEnergySinceReset(),
                                 devStateGlobal_.getEnergySinceReset() / totalTimeInSeconds,
                                 // devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
@@ -583,22 +562,22 @@ FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int
     return sum;
 }
 
-void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
-    if (fullAppRunResultsContainer_.size() == 0) {
-        fullAppRunResultsContainer_.emplace_back(device_->getMinMaxLimitInWatts().second,
-                                        ref.energy,
-                                        ref.pkgPower,
-                                        ref.pp0power,
-                                        ref.pp1power,
-                                        ref.dramPower,
-                                        ref.time_,
-                                        ref.inst,
-                                        ref.cycl);
-        std::cout << "Reference run saved.\n";
-    } else {
-        std::cout << "Reference run already exists!.\n";
-    }
-}
+// void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
+//     if (fullAppRunResultsContainer_.size() == 0) {
+//         fullAppRunResultsContainer_.emplace_back(device_->getMinMaxLimitInWatts().second,
+//                                         ref.energy,
+//                                         ref.pkgPower,
+//                                         ref.pp0power,
+//                                         ref.pp1power,
+//                                         ref.dramPower,
+//                                         ref.time_,
+//                                         ref.inst,
+//                                         ref.cycl);
+//         std::cout << "Reference run saved.\n";
+//     } else {
+//         std::cout << "Reference run already exists!.\n";
+//     }
+// }
 
 void Eco::referenceRunWithoutCaps(char* const* argv) {
     auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
@@ -695,12 +674,22 @@ void Eco::modifyWatchdog(WatchdogStatus status) {
     watchdog.close();
 }
 
-void Eco::plotPowerLog() {
+void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
     std::string imgFileName = outPowerFileName_;
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 3,
                                       imgFileName.end(),
                                       "png"));
-    p.setPlotTitle("Power Log - " + getDeviceName());
+    p.setPlotTitle("Power Log - " + getDeviceName(), 16);
+    if(results)
+    {
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(3)
+        << "Total E: " << results->energy << " J"
+        << "    Total time: " << results->time_.totalTime_ << " s"
+        << "    av. Power: " << results->pkgPower << " W";
+        // << "    last powercap: " << results->powercap << " W";
+        p.setSimpleSubtitle(ss.str(), 12);
+    }
     Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
     Series currPKGpower (outPowerFileName_, 1, 3, "current PKG P[W]");
     Series currSMA50power (outPowerFileName_, 1, 4, "SMA50 PKG P[W]");
