@@ -178,7 +178,7 @@ void CudaDevice::reset()
     kernelCounterFile.close();
 }
 
-double CudaDevice::getCurrentPowerInWatts() const
+double CudaDevice::getCurrentPowerInWatts(std::optional<Domain>) const
 {
     unsigned power;
     nvmlReturn_t nvResult = nvmlDeviceGetPowerUsage(deviceHandles_[deviceID_], &power);

@@ -28,43 +28,51 @@ parseArgs(po::variables_map& map)
 {
     auto search = SearchType::LINEAR_SEARCH;
     auto metric = TargetMetric::MIN_E;
-    if (map.count("gss"))
+
+    if (map.count("no-tuning"))
     {
-        map.erase("gss");
-        std::cout << "Using Golden Section Search algorithm as selected.\n";
-        search = SearchType::GOLDEN_SECTION_SEARCH;
-    }
-    else if (map.count("ls"))
-    {
-        map.erase("ls");
-        std::cout << "Using Linear Search algorithm as selected.\n";
-        search = SearchType::LINEAR_SEARCH;
+        std::cout << "Running application with power and energy consumption monitoring only.\n";
     }
     else
     {
-        std::cout << "Using Linear Search algorithm by default.\n";
-    }
-    if (map.count("en"))
-    {
-        map.erase("en");
-        std::cout << "Using ENERGY metric as selected.\n";
-        metric = TargetMetric::MIN_E;
-    }
-    else if (map.count("edp"))
-    {
-        map.erase("edp");
-        std::cout << "Using ENERGY DELAY PRODUCT metric as selected.\n";
-        metric = TargetMetric::MIN_E_X_T;
-    }
-    else if (map.count("eds"))
-    {
-        map.erase("eds");
-        std::cout << "Using ENERGY DELAY SUM metric as selected.\n";
-        metric = TargetMetric::MIN_M_PLUS;
-    }
-    else
-    {
-        std::cout << "Using ENERGY metric by default.\n";
+        if (map.count("gss"))
+        {
+            map.erase("gss");
+            std::cout << "Using Golden Section Search algorithm as selected.\n";
+            search = SearchType::GOLDEN_SECTION_SEARCH;
+        }
+        else if (map.count("ls"))
+        {
+            map.erase("ls");
+            std::cout << "Using Linear Search algorithm as selected.\n";
+            search = SearchType::LINEAR_SEARCH;
+        }
+        else
+        {
+            std::cout << "Using Linear Search algorithm by default.\n";
+        }
+        if (map.count("en"))
+        {
+            map.erase("en");
+            std::cout << "Using ENERGY metric as selected.\n";
+            metric = TargetMetric::MIN_E;
+        }
+        else if (map.count("edp"))
+        {
+            map.erase("edp");
+            std::cout << "Using ENERGY DELAY PRODUCT metric as selected.\n";
+            metric = TargetMetric::MIN_E_X_T;
+        }
+        else if (map.count("eds"))
+        {
+            map.erase("eds");
+            std::cout << "Using ENERGY DELAY SUM metric as selected.\n";
+            metric = TargetMetric::MIN_M_PLUS;
+        }
+        else
+        {
+            std::cout << "Using ENERGY metric by default.\n";
+        }
     }
     return std::make_pair(metric, search);
 }
@@ -91,6 +99,7 @@ void cleanArgv(int& argc, char* argv[])
             flag == "--en"  ||
             flag == "--edp" ||
             flag == "--eds" ||
+            flag == "--no-tuning" ||
             std::string(flag).substr(0,6) == "--gpu="
             )
         {
@@ -156,7 +165,8 @@ int main (int argc, char *argv[])
         ("ls", "use Linear search algorithm")
         ("en", "use Energy metric")
         ("edp", "use Energy Delay Product metric")
-        ("eds", "use Energy Delay Sum metric")
+        ("eds", "use Energy SumDelay  metric")
+        ("no-tuning", "run app only checking the power and energy consumption")
         ("gpu", po::value<int>(), "use GPU backend for card with specified ID")
     ;
     po::variables_map optionsMap;
@@ -208,7 +218,14 @@ int main (int argc, char *argv[])
     bout << "\n";
 
     FinalPowerAndPerfResult result;
-    result = eco->runAppWithSearch(argv, metric, search, argc);
+    if (optionsMap.count("no-tuning"))
+    {
+        result = eco->runAppWithSampling(argv, argc);
+    }
+    else
+    {
+        result = eco->runAppWithSearch(argv, metric, search, argc);
+    }
     bout << std::fixed << std::setprecision(3)
          << "#Energy[J]\ttime[s]\tPower[W]\n"
          << result.energy << "\t" << result.time_.totalTime_ << "\t" << result.pkgPower <<"\n";

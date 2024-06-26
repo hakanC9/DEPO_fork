@@ -62,6 +62,7 @@ IntelDevice::IntelDevice()
     detectPowerCapsAvailability();
     prepareRaplDirsFromAvailableDomains();
     readAndStoreDefaultLimits();
+    currentPowerLimitInWatts_ = totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower/ 1e6;
     initPerformanceCounters();
     initRaplObjectsForEachPKG();
     checkIdlePowerConsumption();
@@ -364,7 +365,7 @@ void IntelDevice::readAndStoreDefaultLimits()
 
 void IntelDevice::restoreDefaults ()
 {
-    currentPowerLimitInWatts_ = DEFAULT_LIMIT;
+    currentPowerLimitInWatts_ = totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower / 1e6;
     //assume that both PKGs has the same limits
     for (auto& currentPkgDir : raplDirs_.packagesDirs_) {
         writeLimitToFile (currentPkgDir + raplDirs_.pl0dir_, raplDefaultCaps_.defaultConstrPKG_->longPower);
@@ -458,12 +459,17 @@ void IntelDevice::initPerformanceCounters()
     }
 }
 
-double IntelDevice::getCurrentPowerInWatts() const // this method shall have the input parameter "deviceID" back
+double IntelDevice::getCurrentPowerInWatts(std::optional<Domain> domain) const // this method shall have the input parameter "deviceID" back
 {
+    Domain d = Domain::PKG;
+    if (domain.has_value())
+    {
+        d = domain.value();
+    }
     double result = 0.0;
     for (auto&& rapl : raplVec_)
     {
-        result += rapl.getCurrentPower()[Domain::PKG];
+        result += rapl.getCurrentPower()[d];
     }
     return result;
 }

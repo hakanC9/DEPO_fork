@@ -534,7 +534,7 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
 FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
     singleAppRunAndPowerSample(argv);
     reportResult();
-    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::seconds>();
+    double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::milliseconds>() / 1000.0;
 
     return FinalPowerAndPerfResult(device_->getMinMaxLimitInWatts().second,
                                 devStateGlobal_.getEnergySinceReset(),
@@ -697,8 +697,8 @@ void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
     Series currSMA200power (outPowerFileName_, 1, 6, "SMA200 PKG P[W]");
     Series currDRAMpower (outPowerFileName_, 1, 7, "current DRAM P[W]");
     p.plotPowerLog({powerCap,
-                    currPKGpower,
                     currDRAMpower,
+                    currPKGpower,
                     currSMA100power});
 }
 

@@ -53,7 +53,7 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
     const auto  perfCounter = device_->getPerfCounter();
 
     next_ = PowerAndPerfState(
-        device_->getCurrentPowerInWatts(),
+        device_->getCurrentPowerInWatts(std::nullopt),
         perfCounter,
         std::chrono::high_resolution_clock::now());
 
@@ -64,7 +64,7 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
 
 double DeviceStateAccumulator::getCurrentPower(Domain d)
 {
-    return device_->getCurrentPowerInWatts();
+    return device_->getCurrentPowerInWatts(d);
 }
 
 double DeviceStateAccumulator::getPerfCounterSinceReset()

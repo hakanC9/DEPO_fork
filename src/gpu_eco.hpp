@@ -66,7 +66,7 @@ class CudaDevice : public Device
 
     std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const override;
     void reset() override;
-    double getCurrentPowerInWatts() const override;
+    double getCurrentPowerInWatts(std::optional<Domain> = std::nullopt) const override;
     unsigned long long int getPerfCounter() const;
     void triggerPowerApiSample() override {}; // empty method since, NVIDIA GPU does not need to explicit trigger API sampling
 

@@ -20,6 +20,7 @@
 #include <vector>
 #include <memory>
 #include <set>
+#include <optional>
 #include <cpucounters.h>
 #include "../power_if/Rapl.hpp"
 #include "../helpers/eco_constants.hpp"
@@ -60,7 +61,7 @@ public:
     // virtual RaplDefaults getDefaultCaps() const = 0; // TODO: remove dependency on RAPL
     virtual void reset() = 0;
     virtual unsigned long long int getPerfCounter() const = 0;
-    virtual double getCurrentPowerInWatts() const = 0;
+    virtual double getCurrentPowerInWatts(std::optional<Domain>) const = 0;
     /*
       triggerPowerApiSample - used to trigger next sample from Power Management API
 
@@ -86,7 +87,7 @@ public:
     void setPowerLimitInMicroWatts(unsigned long limitInMicroW) override;
     std::string getName() const override;
     void reset() override;
-    double getCurrentPowerInWatts() const override;
+    double getCurrentPowerInWatts(std::optional<Domain> = std::nullopt) const override;
     void triggerPowerApiSample() override;
     unsigned long long int getPerfCounter() const override;
 
@@ -124,8 +125,8 @@ private:
     AvailableRaplPowerDomains devicePowerProfile_;
     RaplDirs raplDirs_;
     RaplDefaults raplDefaultCaps_;
-    static constexpr double DEFAULT_LIMIT {300.0};
-    double currentPowerLimitInWatts_ {DEFAULT_LIMIT};
+    // static constexpr double DEFAULT_LIMIT {300.0};
+    double currentPowerLimitInWatts_;
     double idlePowerConsumption_;
     const std::string defaultLimitsFile_ {"./default_limits_dump.txt"};
     std::vector<int> pkgToFirstCoreMap_;
