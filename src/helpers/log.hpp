@@ -56,17 +56,11 @@ static inline
 std::string logCurrentGpuResultLine(
     double timeInMs,
     PowAndPerfResult& curr,
-    const PowAndPerfResult& reference,
+    const std::optional<PowAndPerfResult> reference = std::nullopt,
     double k = 2.0,
     bool noNewLine = false)
 {
     std::stringstream sstream;
-    double currRelativeENG = curr.getEnergyPerInstr() / reference.getEnergyPerInstr();
-    // since we seek for min Et and dynamic metric is looking for
-    // max of its dynamic version, below for loging purposes the order
-    // of division is swaped as it is basically inversion of the relative
-    // dynamic metric
-    double currRelativeEDP = reference.getEnergyTimeProd() / curr.getEnergyTimeProd();
     sstream << timeInMs
             << std::fixed << std::setprecision(2)
             << "\t\t" << curr.appliedPowerCapInWatts_
@@ -75,11 +69,20 @@ std::string logCurrentGpuResultLine(
             // << "\t\t" << currKernelsCount
             << "\t\t" << curr.instructionsCount_
             << std::fixed << std::setprecision(3)
-            << "\t\t" << curr.getInstrPerJoule() * 1000
-            << "\t\t" << (std::isinf(currRelativeENG) || std::isnan(currRelativeENG) ? 1.0 : currRelativeENG)
-            << "\t\t" << (std::isinf(currRelativeEDP) || std::isnan(currRelativeEDP) ? 1.0 : currRelativeEDP)
-            << "\t\t" << curr.getInstrPerSecond()
-            << "\t\t" << curr.checkPlusMetric(reference, k);
+            << "\t\t" << curr.getInstrPerJoule() * 1000;
+    if (reference.has_value())
+    {
+        double currRelativeENG = curr.getEnergyPerInstr() / reference.value().getEnergyPerInstr();
+        // since we seek for min Et and dynamic metric is looking for
+        // max of its dynamic version, below for loging purposes the order
+        // of division is swaped as it is basically inversion of the relative
+        // dynamic metric
+        double currRelativeEDP = reference.value().getEnergyTimeProd() / curr.getEnergyTimeProd();
+        sstream << "\t\t" << (std::isinf(currRelativeENG) || std::isnan(currRelativeENG) ? 1.0 : currRelativeENG)
+                << "\t\t" << (std::isinf(currRelativeEDP) || std::isnan(currRelativeEDP) ? 1.0 : currRelativeEDP)
+                << "\t\t" << curr.getInstrPerSecond()
+                << "\t\t" << curr.checkPlusMetric(reference.value(), k);
+    }
     if (noNewLine) {
         sstream << std::flush;
     } else {

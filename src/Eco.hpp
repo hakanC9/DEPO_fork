@@ -170,3 +170,30 @@ class Eco : public EcoApi
     int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
     int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
 };
+
+
+class SearchAlgorithm
+{
+  public:
+    virtual unsigned operator()(std::shared_ptr<Device>, DeviceStateAccumulator, TargetMetric) const = 0;
+};
+
+class LinearSearchAlgorithm : public SearchAlgorithm
+{
+  public:
+    unsigned operator()(std::shared_ptr<Device>, DeviceStateAccumulator, TargetMetric) const
+    {
+        return 400;
+    }
+};
+
+class GoldenSectionSearchAlgorithm : public SearchAlgorithm
+{
+  public:
+    unsigned operator()(std::shared_ptr<Device>, DeviceStateAccumulator, TargetMetric) const
+    {
+        return 400;
+    }
+  // private:
+    static constexpr float PHI {(sqrt(5) - 1) / 2}; // this is equal 0.618 and it is reverse of 1.618
+};

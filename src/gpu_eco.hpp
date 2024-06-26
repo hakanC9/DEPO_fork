@@ -162,6 +162,7 @@ class GpuEco : public EcoApi
     void waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec);
 
     PowAndPerfResult getReferenceResult(const int referenceSampleTimeInMilliSec);
+    PowAndPerfResult checkPowerAndPerformance(int usPeriod);
 
     int runTunningPhaseLS(
         int& status,

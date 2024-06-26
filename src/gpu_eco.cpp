@@ -542,7 +542,7 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
         auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
-        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult); // reference result is not relevant yet
+        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult);
         if (tmpResult.instructionsCount_ > 0)
         {
             cyclesWithGpuActivity++;
@@ -560,8 +560,7 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
 
 PowAndPerfResult GpuEco::getReferenceResult(const int referenceSampleTimeInMilliSec)
 {
-    usleep(3 * referenceSampleTimeInMilliSec * 1000);
-    auto&& referenceResult = deviceState_->sample().getCurrentPowerAndPerf();
+    auto&& referenceResult = checkPowerAndPerformance(cfg_.referenceRunMultiplier_* referenceSampleTimeInMilliSec * 1000);
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
     *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), referenceResult, referenceResult);
     *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
@@ -612,7 +611,7 @@ int GpuEco::runTunningPhaseGSS(
     std::cout << "EPSILON: " << EPSILON << "\n";
     int a = minPowerLimit_ * 1000; // milli watts
     int b = maxPowerLimit_ * 1000; // milli watts
-    float phi = (sqrt(5) - 1) / 2; // this is equal 0.618 and it is reverse of 1.618
+    float phi = GoldenSectionSearchAlgorithm::PHI;
     int leftCandidateInMilliWatts = b - int(phi * (b - a));
     int rightCandidateInMilliWatts = a + int(phi * (b - a));
     logCurrentRangeGSS(a, leftCandidateInMilliWatts, rightCandidateInMilliWatts, b);
@@ -625,22 +624,18 @@ int GpuEco::runTunningPhaseGSS(
         if (measureL)
         {
             gpu_->setPowerLimitInMicroWatts(leftCandidateInMilliWatts * 10e3);
-            usleep(samplingPeriodInMilliSec * 1000);
-            deviceState_->sample();
-            fL = deviceState_->getCurrentPowerAndPerf();
+            fL = checkPowerAndPerformance(samplingPeriodInMilliSec * 1000);
             // std::cout << "measure left metric value " << fL.getInstrPerSecond() << std::endl;
+            *bout_  << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fL, referenceResult);
         }
-        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fL, referenceResult);
         auto fR = tmp;
         if (measureR)
         {
             gpu_->setPowerLimitInMicroWatts(rightCandidateInMilliWatts * 10e3);
-            usleep(samplingPeriodInMilliSec * 1000);
-            deviceState_->sample();
-            fR = deviceState_->getCurrentPowerAndPerf();
+            fR = checkPowerAndPerformance(samplingPeriodInMilliSec * 1000);
             // std::cout << "measure right metric value" << fR.getEnergyPerInstr() << std::endl;
+            *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fR, referenceResult);
         }
-        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fR, referenceResult);
 
         if (!fL.isRightBetter(fR, metric)) {
             // choose subrange [a, rightCandidateInMilliWatts]
@@ -684,3 +679,24 @@ void GpuEco::executeWithPowercap(
     }       
 }
 
+PowAndPerfResult GpuEco::checkPowerAndPerformance(int usPeriod)
+{
+    auto pause = cfg_.msPause_ * 1000;
+    usleep(pause);
+    deviceState_->sample();
+    auto resultAccumulator = deviceState_->getCurrentPowerAndPerf();
+    // std::cout << "\n[INFO] Firstt data point " << resultAccumulator << std::endl;
+    while (usPeriod > pause){
+        usleep(pause);
+        deviceState_->sample();
+        // logPowerToFile();
+        auto tmp = deviceState_->getCurrentPowerAndPerf();
+        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmp);
+        resultAccumulator += tmp;
+        // std::cout << "[INFO] Single data point " << tmp << std::endl;
+        usPeriod -= pause;
+    }
+    // std::cout << "[INFO] Finall data point " << resultAccumulator << std::endl;
+
+    return resultAccumulator;
+}
