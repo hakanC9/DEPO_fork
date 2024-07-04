@@ -170,11 +170,11 @@ class GpuEco : public EcoApi
         const PowAndPerfResult& referenceResult,
         TargetMetric metric);
 
-    int runTunningPhaseGSS(
-        int& status,
-        int samplingPeriodInMilliSec,
-        const PowAndPerfResult& referenceResult,
-        TargetMetric metric);
+    // int runTunningPhaseGSS(
+    //     int& status,
+    //     int samplingPeriodInMilliSec,
+    //     const PowAndPerfResult& referenceResult,
+    //     TargetMetric metric);
 
     void executeWithPowercap(
         int& status,
@@ -191,6 +191,7 @@ class GpuEco : public EcoApi
     int deviceID_;
     std::ofstream outPowerFile_;
     std::unique_ptr<BothStream> bout_;
+    Logger logger_;
   public:
     std::string outPowerFileName_;
 };

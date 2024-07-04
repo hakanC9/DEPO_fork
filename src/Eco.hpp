@@ -20,6 +20,7 @@
 #include <memory>
 #include <set>
 #include <optional>
+#include <functional>
 // Workaround: below two has to be included in such order to ensure no warnings
 //             about macro redefinitions. Some of the macros in Rapl.hpp are already
 //             defined in types.h included by cpucounters.h but not all of them.
@@ -172,28 +173,231 @@ class Eco : public EcoApi
 };
 
 
+#include "helpers/log.hpp"
+
+class Logger
+{
+  public:
+    Logger(std::string prefix)
+    {
+        const auto dir = generateUniqueDir(prefix);
+        powerFileName_ = dir + "power_log.csv";
+        resultFileName_ = dir + "result.csv";
+        powerFile_.open(powerFileName_, std::ios::out | std::ios::trunc);
+        resultFile_.open(resultFileName_, std::ios::out | std::ios::trunc);
+        bout_ = std::make_unique<BothStream>(powerFile_);
+    }
+    void logPowerLogLine(DeviceStateAccumulator& deviceState, PowAndPerfResult current, const std::optional<PowAndPerfResult> reference = std::nullopt)
+    {
+        *bout_  << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), current, reference);
+    }
+    std::string getPowerFileName() const
+    {
+        return powerFileName_;
+    }
+    void flushAndClose() // might be useless
+    {
+        bout_->flush();
+        powerFile_.close();
+    }
+  private:
+    std::string powerFileName_;
+    std::ofstream powerFile_;
+    std::string resultFileName_;
+    std::ofstream resultFile_;
+    std::unique_ptr<BothStream> bout_;
+
+    std::string generateUniqueDir(std::string prefix = "")
+    {
+        std::string dir = prefix + "experiment_" +
+            std::to_string(
+                std::chrono::system_clock::to_time_t(
+                      std::chrono::high_resolution_clock::now()));
+        dir += "/";
+        const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        if (-1 == dir_err) {
+            printf("Error creating experiment result directory!\n");
+            exit(1);
+        }
+        return dir;
+    }
+};
+
+using Algorithm = std::function<unsigned(std::shared_ptr<Device>,DeviceStateAccumulator&,TargetMetric,const PowAndPerfResult&,int&,int,int,Logger&)>;
+
 class SearchAlgorithm
 {
   public:
-    virtual unsigned operator()(std::shared_ptr<Device>, DeviceStateAccumulator, TargetMetric) const = 0;
+    virtual unsigned operator() (
+      std::shared_ptr<Device>,
+      DeviceStateAccumulator&,
+      TargetMetric,
+      const PowAndPerfResult&,
+      int&,
+      int,
+      int,
+      Logger&) const = 0;
+
+    static PowAndPerfResult sampleAndAccumulatePowAndPerfForGivenPeriod(
+      int tuningTimeWindowInMicroSeconds,
+      int powerSamplingPeriodInMilliSeconds,
+      DeviceStateAccumulator& deviceState,
+      Logger& logger)
+    {
+      auto pauseInMicroSeconds = powerSamplingPeriodInMilliSeconds * 1000;
+      usleep(pauseInMicroSeconds);
+      deviceState.sample();
+      auto resultAccumulator = deviceState.getCurrentPowerAndPerf();
+      // std::cout << "\n[INFO] Firstt data point " << resultAccumulator << std::endl;
+      while (tuningTimeWindowInMicroSeconds > pauseInMicroSeconds)
+      {
+          usleep(pauseInMicroSeconds);
+          deviceState.sample();
+          // logPowerToFile();
+          auto tmp = deviceState.getCurrentPowerAndPerf();
+          logger.logPowerLogLine(deviceState, tmp);
+          // *bout_ << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), tmp);
+          resultAccumulator += tmp;
+          // std::cout << "[INFO] Single data point " << tmp << std::endl;
+          tuningTimeWindowInMicroSeconds -= pauseInMicroSeconds;
+      }
+      // std::cout << "[INFO] Finall data point " << resultAccumulator << std::endl;
+
+      return resultAccumulator;
+    }
 };
 
 class LinearSearchAlgorithm : public SearchAlgorithm
 {
   public:
-    unsigned operator()(std::shared_ptr<Device>, DeviceStateAccumulator, TargetMetric) const
+    unsigned operator() (
+      std::shared_ptr<Device> device,
+      DeviceStateAccumulator& deviceState,
+      TargetMetric metric,
+      const PowAndPerfResult& reference,
+      int& childProcStatus,
+      int powerSamplingPeriodInMilliSeconds,
+      int tuningTimeWindowInMilliSeconds,
+      Logger& logger) const override
     {
-        return 400;
+      const auto [minLimitInWatts, maxLimitInWatts] = device->getMinMaxLimitInWatts();
+      const auto minLimitInMictoWatts = minLimitInWatts * 1e6;
+      const auto maxLimitInMictoWatts = maxLimitInWatts * 1e6;
+      int STEP = (maxLimitInMictoWatts - minLimitInMictoWatts) / 10;
+
+      auto bestResultSoFar = reference;
+      int currentLimitInMicroWatts = maxLimitInMictoWatts;
+
+      while(childProcStatus)
+      {
+        device->setPowerLimitInMicroWatts(currentLimitInMicroWatts);
+        auto&& currentResult = sampleAndAccumulatePowAndPerfForGivenPeriod(
+          tuningTimeWindowInMilliSeconds * 1000,
+          powerSamplingPeriodInMilliSeconds,
+          deviceState,
+          logger);
+        logger.logPowerLogLine(deviceState, currentResult, reference);
+        if (bestResultSoFar.isRightBetter(currentResult, metric))
+        {
+            bestResultSoFar = std::move(currentResult);
+        }
+        if (currentLimitInMicroWatts == minLimitInMictoWatts)
+        {
+            break;
+        }
+        currentLimitInMicroWatts -= STEP;
+        if (currentLimitInMicroWatts < minLimitInMictoWatts)
+        {
+          currentLimitInMicroWatts = minLimitInMictoWatts;
+        }
+      }
+      return bestResultSoFar.appliedPowerCapInWatts_;
     }
 };
 
 class GoldenSectionSearchAlgorithm : public SearchAlgorithm
 {
   public:
-    unsigned operator()(std::shared_ptr<Device>, DeviceStateAccumulator, TargetMetric) const
+    unsigned operator() (
+      std::shared_ptr<Device> device,
+      DeviceStateAccumulator& deviceState,
+      TargetMetric metric,
+      const PowAndPerfResult& reference,
+      int& childProcStatus,
+      int powerSamplingPeriodInMilliSeconds,
+      int tuningTimeWindowInMilliSeconds,
+      Logger& logger) const override
     {
-        return 400;
+        const auto [minLimitInWatts, maxLimitInWatts] = device->getMinMaxLimitInWatts();
+        int EPSILON = (maxLimitInWatts - minLimitInWatts) * 1e6 / 25;
+
+        int a = minLimitInWatts * 1e6; // micro watts
+        int b = maxLimitInWatts * 1e6; // micro watts
+
+        int leftCandidateInMicroiWatts = b - int(PHI * (b - a));
+        int rightCandidateInMicroWatts = a + int(PHI * (b - a));
+
+        bool measureL = true;
+        bool measureR = true;
+
+        PowAndPerfResult tmp = reference;
+
+        while ((b - a) > EPSILON)
+        {
+          auto fL = tmp;
+          if (measureL)
+          {
+            device->setPowerLimitInMicroWatts(leftCandidateInMicroiWatts);
+            fL = sampleAndAccumulatePowAndPerfForGivenPeriod(
+              tuningTimeWindowInMilliSeconds * 1000,
+              powerSamplingPeriodInMilliSeconds,
+              deviceState,
+              logger);
+            logger.logPowerLogLine(deviceState, fL, reference);
+          }
+          auto fR = tmp;
+          if (measureR)
+          {
+            device->setPowerLimitInMicroWatts(rightCandidateInMicroWatts);
+            fR = sampleAndAccumulatePowAndPerfForGivenPeriod(
+              tuningTimeWindowInMilliSeconds * 1000,
+              powerSamplingPeriodInMilliSeconds,
+              deviceState,
+              logger);
+            logger.logPowerLogLine(deviceState, fR, reference);
+          }
+
+          if (!fL.isRightBetter(fR, metric)) {
+            // choose subrange [a, rightCandidateInMilliWatts]
+            b = rightCandidateInMicroWatts;
+            rightCandidateInMicroWatts = leftCandidateInMicroiWatts;
+            tmp = fL;
+            measureR = false;
+            measureL = true;
+            leftCandidateInMicroiWatts = b - int(PHI * (b - a));
+          } else {
+            // choose subrange [leftCandidateInMilliWatts, b]
+            a = leftCandidateInMicroiWatts;
+            leftCandidateInMicroiWatts = rightCandidateInMicroWatts;
+            tmp = fR;
+            measureR = true;
+            measureL = false;
+            rightCandidateInMicroWatts = a + int(PHI * (b - a));
+          }
+          logCurrentRangeGSS(a, leftCandidateInMicroiWatts/1000, rightCandidateInMicroWatts/1000, b);
+        }
+        return (a + b) / 2;
     }
-  // private:
     static constexpr float PHI {(sqrt(5) - 1) / 2}; // this is equal 0.618 and it is reverse of 1.618
+  private:
+    void logCurrentRangeGSS(int a, int leftCandidateInMilliWatts, int rightCandidateInMilliWatts, int b) const
+    {
+        std::cout << "#--------------------------------\n"
+                  << "# Current GSS range: |"
+                  << a << " "
+                  << leftCandidateInMilliWatts << " "
+                  << rightCandidateInMilliWatts << " "
+                  << b << "|\n"
+                  << "#--------------------------------\n";
+    }
 };

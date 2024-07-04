@@ -1,11 +1,11 @@
-msPause: 100
+msPause: 500
 percentStep: 5
 idleCheckTime: 10
 numIterations: 1
 perfDropStopCondition: 250
 powerSampleOn: 1
 targetMetric: 0 # 0-E, 1-EDP, 2-EDS
-msTestPhasePeriod: 1000
+msTestPhasePeriod: 3000
 reducedPowerCapRange: 0
 powerLog: 1
 optimizationDelay: 0

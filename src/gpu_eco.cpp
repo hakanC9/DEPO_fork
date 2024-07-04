@@ -161,7 +161,7 @@ std::pair<unsigned, unsigned> CudaDevice::getMinMaxLimitInWatts() const
 
 void CudaDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW)
 {
-    unsigned long limitInMilliWatts = limitInMicroW / 10e3;
+    unsigned long limitInMilliWatts = limitInMicroW / 1e3;
     nvmlReturn_t nvResult = nvmlDeviceSetPowerManagementLimit (deviceHandles_[deviceID_], limitInMilliWatts);
     if (NVML_SUCCESS != nvResult)
     {
@@ -281,24 +281,24 @@ unsigned long long int CudaDevice::getPerfCounter() const
 // }
 
 
-GpuEco::GpuEco(int deviceID) : deviceID_(deviceID)
+GpuEco::GpuEco(int deviceID) : deviceID_(deviceID), logger_("gpu_")
 {
     gpu_ = std::make_shared<CudaDevice>(deviceID);
     deviceState_ = std::make_unique<DeviceStateAccumulator>(gpu_);
     std::tie(minPowerLimit_, maxPowerLimit_) = gpu_->getMinMaxLimitInWatts();
     defaultPowerLimitInWatts_ = gpu_->getPowerLimitInWatts();
     gpu_->reset();
-    const auto dir = generateUniqueDir();
-    outPowerFileName_ = dir + "power_log.csv";
-    outResultFileName_ = dir + "result.csv";
-    outPowerFile_.open(outPowerFileName_, std::ios::out | std::ios::trunc);
-    bout_ = std::make_unique<BothStream>(outPowerFile_);
+    // const auto dir = generateUniqueDir();
+    // outPowerFileName_ = dir + "power_log.csv";
+    // outResultFileName_ = dir + "result.csv";
+    // outPowerFile_.open(outPowerFileName_, std::ios::out | std::ios::trunc);
+    // bout_ = std::make_unique<BothStream>(outPowerFile_);
 }
 
 GpuEco::~GpuEco()
 {
-    gpu_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
-    outPowerFile_.close();
+    gpu_->setPowerLimitInMicroWatts(1e6 * defaultPowerLimitInWatts_);
+    // outPowerFile_.close();
 }
 
 void GpuEco::idleSample(int sleepPeriodInMs)
@@ -306,7 +306,8 @@ void GpuEco::idleSample(int sleepPeriodInMs)
     usleep(sleepPeriodInMs * 1000);
     deviceState_->sample();
     auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
-    *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult);
+    // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult);
+    logger_.logPowerLogLine(*deviceState_, tmpResult);
     }
 
 FinalPowerAndPerfResult GpuEco::runAppWithSampling(char* const* argv, int argc)
@@ -472,17 +473,22 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
 
                 referenceRun = getReferenceResult(cfg_.msTestPhasePeriod_);
 
+                // std::function<unsigned(std::shared_ptr<Device>,DeviceStateAccumulator&,TargetMetric,const PowAndPerfResult&,int&,int,int,Logger&)> algorithm;
+                Algorithm algorithm;
                 if (searchType == SearchType::LINEAR_SEARCH)
                 {
-                    bestResultCap = runTunningPhaseLS(status, cfg_.msTestPhasePeriod_, referenceRun, metric);
+                    algorithm = LinearSearchAlgorithm();
+                    // bestResultCap = runTunningPhaseLS(status, cfg_.msTestPhasePeriod_, referenceRun, metric);
                 }
                 else
                 {
-                    bestResultCap = runTunningPhaseGSS(status, cfg_.msTestPhasePeriod_, referenceRun, metric);
+                    algorithm = GoldenSectionSearchAlgorithm();
+                    // bestResultCap = runTunningPhaseGSS(status, cfg_.msTestPhasePeriod_, referenceRun, metric);
                 }
+                bestResultCap = algorithm(gpu_, *deviceState_, metric, referenceRun, status, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
             });
             executeWithPowercap(status, bestResultCap, cfg_.msPause_, childProcId, referenceRun);
-            gpu_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
+            gpu_->setPowerLimitInMicroWatts(1e6 * defaultPowerLimitInWatts_);
             wait(&status);
         }
     }
@@ -506,10 +512,14 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
 
 void GpuEco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results)
 {
-    bout_->flush();
-    outPowerFile_.close();
-    std::cout << "Processing " << outPowerFileName_ << " file...\n";
-    std::string imgFileName = outPowerFileName_;
+    // bout_->flush();
+    // outPowerFile_.close();
+    logger_.flushAndClose();
+    const auto f = logger_.getPowerFileName();
+    // std::cout << "Processing " << outPowerFileName_ << " file...\n";
+    std::cout << "Processing " << f << " file...\n";
+    // std::string imgFileName = outPowerFileName_;
+    std::string imgFileName = f;
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 4,
                                     imgFileName.end(),
                                     ".png"));
@@ -524,12 +534,16 @@ void GpuEco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results)
         // << "    last Powercap: " << results->powercap << " W";
         p.setSimpleSubtitle(ss.str(), 12);
     }
-    Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
-    Series currPower (outPowerFileName_, 1, 3, "P[W]");
-    Series currENG (outPowerFileName_, 1, 7, "ENG");
-    Series currEDP (outPowerFileName_, 1, 8, "EDP");
-    Series currPERF (outPowerFileName_, 1, 9, "PERF");
-
+    // Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
+    // Series currPower (outPowerFileName_, 1, 3, "P[W]");
+    // Series currENG (outPowerFileName_, 1, 7, "ENG");
+    // Series currEDP (outPowerFileName_, 1, 8, "EDP");
+    // Series currPERF (outPowerFileName_, 1, 9, "PERF");
+    Series powerCap (f, 1, 2, "P cap [W]");
+    Series currPower (f, 1, 3, "P[W]");
+    Series currENG (f, 1, 7, "ENG");
+    Series currEDP (f, 1, 8, "EDP");
+    Series currPERF (f, 1, 9, "PERF");
     p.plotPowerLog({powerCap, currPower/*, currENG, currEDP, currPERF*/});
     p.submitPlot();
 }
@@ -542,7 +556,8 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
         auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
-        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult);
+        // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult);
+        logger_.logPowerLogLine(*deviceState_, tmpResult);
         if (tmpResult.instructionsCount_ > 0)
         {
             cyclesWithGpuActivity++;
@@ -561,105 +576,109 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
 PowAndPerfResult GpuEco::getReferenceResult(const int referenceSampleTimeInMilliSec)
 {
     auto&& referenceResult = checkPowerAndPerformance(cfg_.referenceRunMultiplier_* referenceSampleTimeInMilliSec * 1000);
-    *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
-    *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), referenceResult, referenceResult);
-    *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
+    // *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
+    // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), referenceResult, referenceResult);
+    logger_.logPowerLogLine(*deviceState_, referenceResult);
+    // *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
     return referenceResult;
 }
 
-int GpuEco::runTunningPhaseLS(
-    int& status,
-    int samplingPeriodInMilliSec,
-    const PowAndPerfResult& referenceResult,
-    TargetMetric metric)
-{
-    auto currBestResult = referenceResult;
-    int limitInWatts = maxPowerLimit_;
-    while(status)
-    {
-        gpu_->setPowerLimitInMicroWatts(limitInWatts * 10e6);
-        usleep(samplingPeriodInMilliSec * 1000);
-        deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
-        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
-        // TODO: currently logCurrentResult function MUST be run before any isRightBetter() call as it actually evaluates
-        //       the EDS metric. This dependency shall be removed.
-        if (currBestResult.isRightBetter(tmpResult, metric))
-        {
-            currBestResult = std::move(tmpResult);
-        }
-        if (limitInWatts == minPowerLimit_)
-        {
-            break;
-        }
-        else if (limitInWatts > minPowerLimit_)
-        {
-            limitInWatts -= 5;
-        }
-    }
-    *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
-    return currBestResult.appliedPowerCapInWatts_;
+// int GpuEco::runTunningPhaseLS(
+//     int& status,
+//     int samplingPeriodInMilliSec,
+//     const PowAndPerfResult& referenceResult,
+//     TargetMetric metric)
+// {
+//     auto currBestResult = referenceResult;
+//     int limitInWatts = maxPowerLimit_;
+//     while(status)
+//     {
+//         gpu_->setPowerLimitInMicroWatts(limitInWatts * 1e6);
+//         usleep(samplingPeriodInMilliSec * 1000);
+//         deviceState_->sample();
+//         auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+//         logger_.logPowerLogLine(*deviceState_, tmpResult, referenceResult);
+//         // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
+//         // TODO: currently logCurrentResult function MUST be run before any isRightBetter() call as it actually evaluates
+//         //       the EDS metric. This dependency shall be removed.
+//         if (currBestResult.isRightBetter(tmpResult, metric))
+//         {
+//             currBestResult = std::move(tmpResult);
+//         }
+//         if (limitInWatts == minPowerLimit_)
+//         {
+//             break;
+//         }
+//         else if (limitInWatts > minPowerLimit_)
+//         {
+//             limitInWatts -= 5;
+//         }
+//     }
+//     // *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
+//     return currBestResult.appliedPowerCapInWatts_;
 }
 
-int GpuEco::runTunningPhaseGSS(
-    int& status,
-    int samplingPeriodInMilliSec,
-    const PowAndPerfResult& referenceResult,
-    TargetMetric metric)
-{
-    int EPSILON = (maxPowerLimit_ - minPowerLimit_)/ 25;
-    std::cout << "EPSILON: " << EPSILON << "\n";
-    int a = minPowerLimit_ * 1000; // milli watts
-    int b = maxPowerLimit_ * 1000; // milli watts
-    float phi = GoldenSectionSearchAlgorithm::PHI;
-    int leftCandidateInMilliWatts = b - int(phi * (b - a));
-    int rightCandidateInMilliWatts = a + int(phi * (b - a));
-    logCurrentRangeGSS(a, leftCandidateInMilliWatts, rightCandidateInMilliWatts, b);
-    bool measureL = true;
-    bool measureR = true;
-    PowAndPerfResult tmp = referenceResult;
-    while ((b - a) / 1000 > EPSILON)
-    {
-        auto fL = tmp;
-        if (measureL)
-        {
-            gpu_->setPowerLimitInMicroWatts(leftCandidateInMilliWatts * 10e3);
-            fL = checkPowerAndPerformance(samplingPeriodInMilliSec * 1000);
-            // std::cout << "measure left metric value " << fL.getInstrPerSecond() << std::endl;
-            *bout_  << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fL, referenceResult);
-        }
-        auto fR = tmp;
-        if (measureR)
-        {
-            gpu_->setPowerLimitInMicroWatts(rightCandidateInMilliWatts * 10e3);
-            fR = checkPowerAndPerformance(samplingPeriodInMilliSec * 1000);
-            // std::cout << "measure right metric value" << fR.getEnergyPerInstr() << std::endl;
-            *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fR, referenceResult);
-        }
+// int GpuEco::runTunningPhaseGSS(
+//     int& status,
+//     int samplingPeriodInMilliSec,
+//     const PowAndPerfResult& referenceResult,
+//     TargetMetric metric)
+// {
+//     int EPSILON = (maxPowerLimit_ - minPowerLimit_)/ 25;
+//     std::cout << "EPSILON: " << EPSILON << "\n";
+//     int a = minPowerLimit_ * 1000; // milli watts
+//     int b = maxPowerLimit_ * 1000; // milli watts
+//     float phi = GoldenSectionSearchAlgorithm::PHI;
+//     int leftCandidateInMilliWatts = b - int(phi * (b - a));
+//     int rightCandidateInMilliWatts = a + int(phi * (b - a));
+//     logCurrentRangeGSS(a, leftCandidateInMilliWatts, rightCandidateInMilliWatts, b);
+//     bool measureL = true;
+//     bool measureR = true;
+//     PowAndPerfResult tmp = referenceResult;
+//     while ((b - a) / 1000 > EPSILON)
+//     {
+//         auto fL = tmp;
+//         if (measureL)
+//         {
+//             gpu_->setPowerLimitInMicroWatts(leftCandidateInMilliWatts * 10e3);
+//             fL = checkPowerAndPerformance(samplingPeriodInMilliSec * 1000);
+//             // std::cout << "measure left metric value " << fL.getInstrPerSecond() << std::endl;
+//             // *bout_  << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fL, referenceResult);
+//             logger_.logPowerLogLine(*deviceState_, fL, referenceResult);
+//         }
+//         auto fR = tmp;
+//         if (measureR)
+//         {
+//             gpu_->setPowerLimitInMicroWatts(rightCandidateInMilliWatts * 10e3);
+//             fR = checkPowerAndPerformance(samplingPeriodInMilliSec * 1000);
+//             // std::cout << "measure right metric value" << fR.getEnergyPerInstr() << std::endl;
+//             // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), fR, referenceResult);
+//             logger_.logPowerLogLine(*deviceState_, fR, referenceResult);
+//         }
 
-        if (!fL.isRightBetter(fR, metric)) {
-            // choose subrange [a, rightCandidateInMilliWatts]
-            b = rightCandidateInMilliWatts;
-            rightCandidateInMilliWatts = leftCandidateInMilliWatts;
-            tmp = fL;
-            measureR = false;
-            measureL = true;
-            leftCandidateInMilliWatts = b - int(phi * (b - a));
-        } else {
-            // choose subrange [leftCandidateInMilliWatts, b]
-            a = leftCandidateInMilliWatts;
-            leftCandidateInMilliWatts = rightCandidateInMilliWatts;
-            tmp = fR;
-            measureR = true;
-            measureL = false;
-            rightCandidateInMilliWatts = a + int(phi * (b - a));
-        }
-        logCurrentRangeGSS(a, leftCandidateInMilliWatts, rightCandidateInMilliWatts, b);
-    }
-    // when stop condition was met return the middle of the subrange found
-    *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
-    return (a + b) / (2 * 1000);
-}
+//         if (!fL.isRightBetter(fR, metric)) {
+//             // choose subrange [a, rightCandidateInMilliWatts]
+//             b = rightCandidateInMilliWatts;
+//             rightCandidateInMilliWatts = leftCandidateInMilliWatts;
+//             tmp = fL;
+//             measureR = false;
+//             measureL = true;
+//             leftCandidateInMilliWatts = b - int(phi * (b - a));
+//         } else {
+//             // choose subrange [leftCandidateInMilliWatts, b]
+//             a = leftCandidateInMilliWatts;
+//             leftCandidateInMilliWatts = rightCandidateInMilliWatts;
+//             tmp = fR;
+//             measureR = true;
+//             measureL = false;
+//             rightCandidateInMilliWatts = a + int(phi * (b - a));
+//         }
+//         logCurrentRangeGSS(a, leftCandidateInMilliWatts, rightCandidateInMilliWatts, b);
+//     }
+//     // when stop condition was met return the middle of the subrange found
+//     // *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
+//     return (a + b) / (2 * 1000);
+// }
 
 void GpuEco::executeWithPowercap(
     int& status,
@@ -668,13 +687,14 @@ void GpuEco::executeWithPowercap(
     int childPID,
     const PowAndPerfResult& referenceResult)
 {
-    gpu_->setPowerLimitInMicroWatts(powercapInWatts * 10e6);
+    gpu_->setPowerLimitInMicroWatts(powercapInWatts * 1e6);
     while (status)
     {
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
         auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
-        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
+        logger_.logPowerLogLine(*deviceState_, tmpResult, referenceResult);
+        // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
         waitpid(childPID, &status, WNOHANG);
     }       
 }
@@ -691,7 +711,8 @@ PowAndPerfResult GpuEco::checkPowerAndPerformance(int usPeriod)
         deviceState_->sample();
         // logPowerToFile();
         auto tmp = deviceState_->getCurrentPowerAndPerf();
-        *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmp);
+        // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmp);
+        logger_.logPowerLogLine(*deviceState_, tmp);
         resultAccumulator += tmp;
         // std::cout << "[INFO] Single data point " << tmp << std::endl;
         usPeriod -= pause;
