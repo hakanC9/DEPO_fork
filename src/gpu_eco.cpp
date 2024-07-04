@@ -485,7 +485,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
                     algorithm = GoldenSectionSearchAlgorithm();
                     // bestResultCap = runTunningPhaseGSS(status, cfg_.msTestPhasePeriod_, referenceRun, metric);
                 }
-                bestResultCap = algorithm(gpu_, *deviceState_, metric, referenceRun, status, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
+                bestResultCap = algorithm(gpu_, *deviceState_, metric, referenceRun, status, childProcId, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
             });
             executeWithPowercap(status, bestResultCap, cfg_.msPause_, childProcId, referenceRun);
             gpu_->setPowerLimitInMicroWatts(1e6 * defaultPowerLimitInWatts_);
@@ -616,7 +616,7 @@ PowAndPerfResult GpuEco::getReferenceResult(const int referenceSampleTimeInMilli
 //     }
 //     // *bout_ << "#-----------------------------------------------------------------------------------------------------------------------------------\n";
 //     return currBestResult.appliedPowerCapInWatts_;
-}
+// }
 
 // int GpuEco::runTunningPhaseGSS(
 //     int& status,

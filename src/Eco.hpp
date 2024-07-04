@@ -32,6 +32,7 @@
 #include "helpers/params_config.hpp"
 #include "helpers/data_filter.hpp"
 #include "helpers/both_stream.hpp"
+#include "helpers/log.hpp"
 
 template <class F>
 inline auto measureDuration(F&& fun)
@@ -80,7 +81,7 @@ class Trigger
 class EcoApi
 {
   public:
-    virtual void idleSample(int) = 0;
+    virtual void idleSample(int) = 0; // TODO: remove here and in Eco and in GpuEco
     virtual FinalPowerAndPerfResult runAppWithSampling(char* const*, int) = 0;
     virtual FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int) = 0;
     virtual void plotPowerLog(std::optional<FinalPowerAndPerfResult>) = 0;
@@ -102,7 +103,7 @@ class EcoApi
 class Eco : public EcoApi
 {
   public:
-    void idleSample(int idleTimeS) override;
+    void idleSample(int idleTimeS) override {}; // TODO:remove
     FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1) override;
     FinalPowerAndPerfResult runAppWithSearch(
       char* const*,
@@ -145,6 +146,7 @@ class Eco : public EcoApi
     DeviceStateAccumulator devStateGlobal_;
     // DeviceStateAccumulator devStateLocal_;
     std::vector<FinalPowerAndPerfResult> fullAppRunResultsContainer_;
+    Logger logger_;
 
     WatchdogStatus defaultWatchdog;
     std::ofstream outPowerFile;
@@ -160,70 +162,21 @@ class Eco : public EcoApi
     void singleAppRunAndPowerSample(char* const*);
     FinalPowerAndPerfResult multipleAppRunAndPowerSample(char* const*, int);
     PowAndPerfResult checkPowerAndPerformance(int);
-    PowAndPerfResult setCapAndMeasure(int, int);
-    void justSample(int timeS);
+    // PowAndPerfResult setCapAndMeasure(int, int);
+    // void justSample(int timeS);
     void reportResult(double = 0.0, double = 0.0);
     void waitPhase(int&, int);
-    int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
+    // int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
     void execPhase(int, int&, int, PowAndPerfResult&, bool = false);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
-    int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
-    int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
+    // int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
+    // int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
 };
 
+#include <sys/wait.h>
 
-#include "helpers/log.hpp"
-
-class Logger
-{
-  public:
-    Logger(std::string prefix)
-    {
-        const auto dir = generateUniqueDir(prefix);
-        powerFileName_ = dir + "power_log.csv";
-        resultFileName_ = dir + "result.csv";
-        powerFile_.open(powerFileName_, std::ios::out | std::ios::trunc);
-        resultFile_.open(resultFileName_, std::ios::out | std::ios::trunc);
-        bout_ = std::make_unique<BothStream>(powerFile_);
-    }
-    void logPowerLogLine(DeviceStateAccumulator& deviceState, PowAndPerfResult current, const std::optional<PowAndPerfResult> reference = std::nullopt)
-    {
-        *bout_  << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), current, reference);
-    }
-    std::string getPowerFileName() const
-    {
-        return powerFileName_;
-    }
-    void flushAndClose() // might be useless
-    {
-        bout_->flush();
-        powerFile_.close();
-    }
-  private:
-    std::string powerFileName_;
-    std::ofstream powerFile_;
-    std::string resultFileName_;
-    std::ofstream resultFile_;
-    std::unique_ptr<BothStream> bout_;
-
-    std::string generateUniqueDir(std::string prefix = "")
-    {
-        std::string dir = prefix + "experiment_" +
-            std::to_string(
-                std::chrono::system_clock::to_time_t(
-                      std::chrono::high_resolution_clock::now()));
-        dir += "/";
-        const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-        if (-1 == dir_err) {
-            printf("Error creating experiment result directory!\n");
-            exit(1);
-        }
-        return dir;
-    }
-};
-
-using Algorithm = std::function<unsigned(std::shared_ptr<Device>,DeviceStateAccumulator&,TargetMetric,const PowAndPerfResult&,int&,int,int,Logger&)>;
+using Algorithm = std::function<unsigned(std::shared_ptr<Device>,DeviceStateAccumulator&,TargetMetric,const PowAndPerfResult&,int&,int,int,int,Logger&)>;
 
 class SearchAlgorithm
 {
@@ -236,32 +189,35 @@ class SearchAlgorithm
       int&,
       int,
       int,
+      int,
       Logger&) const = 0;
 
     static PowAndPerfResult sampleAndAccumulatePowAndPerfForGivenPeriod(
       int tuningTimeWindowInMicroSeconds,
       int powerSamplingPeriodInMilliSeconds,
       DeviceStateAccumulator& deviceState,
+      int& procStatus,
+      int childProcID,
       Logger& logger)
     {
       auto pauseInMicroSeconds = powerSamplingPeriodInMilliSeconds * 1000;
       usleep(pauseInMicroSeconds);
       deviceState.sample();
       auto resultAccumulator = deviceState.getCurrentPowerAndPerf();
-      // std::cout << "\n[INFO] Firstt data point " << resultAccumulator << std::endl;
+
       while (tuningTimeWindowInMicroSeconds > pauseInMicroSeconds)
       {
-          usleep(pauseInMicroSeconds);
-          deviceState.sample();
-          // logPowerToFile();
-          auto tmp = deviceState.getCurrentPowerAndPerf();
-          logger.logPowerLogLine(deviceState, tmp);
-          // *bout_ << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), tmp);
-          resultAccumulator += tmp;
-          // std::cout << "[INFO] Single data point " << tmp << std::endl;
-          tuningTimeWindowInMicroSeconds -= pauseInMicroSeconds;
+        usleep(pauseInMicroSeconds);
+        deviceState.sample();
+        // logPowerToFile();
+        auto tmp = deviceState.getCurrentPowerAndPerf();
+        logger.logPowerLogLine(deviceState, tmp);
+        resultAccumulator += tmp;
+        tuningTimeWindowInMicroSeconds -= pauseInMicroSeconds;
+
+        waitpid(childProcID, &procStatus, WNOHANG);
+        if (!procStatus) break;
       }
-      // std::cout << "[INFO] Finall data point " << resultAccumulator << std::endl;
 
       return resultAccumulator;
     }
@@ -275,7 +231,8 @@ class LinearSearchAlgorithm : public SearchAlgorithm
       DeviceStateAccumulator& deviceState,
       TargetMetric metric,
       const PowAndPerfResult& reference,
-      int& childProcStatus,
+      int& procStatus,
+      int childProcID,
       int powerSamplingPeriodInMilliSeconds,
       int tuningTimeWindowInMilliSeconds,
       Logger& logger) const override
@@ -288,13 +245,15 @@ class LinearSearchAlgorithm : public SearchAlgorithm
       auto bestResultSoFar = reference;
       int currentLimitInMicroWatts = maxLimitInMictoWatts;
 
-      while(childProcStatus)
+      while(procStatus)
       {
         device->setPowerLimitInMicroWatts(currentLimitInMicroWatts);
         auto&& currentResult = sampleAndAccumulatePowAndPerfForGivenPeriod(
-          tuningTimeWindowInMilliSeconds * 1000,
+          tuningTimeWindowInMilliSeconds * 1e3,
           powerSamplingPeriodInMilliSeconds,
           deviceState,
+          procStatus,
+          childProcID,
           logger);
         logger.logPowerLogLine(deviceState, currentResult, reference);
         if (bestResultSoFar.isRightBetter(currentResult, metric))
@@ -310,6 +269,7 @@ class LinearSearchAlgorithm : public SearchAlgorithm
         {
           currentLimitInMicroWatts = minLimitInMictoWatts;
         }
+        waitpid(childProcID, &procStatus, WNOHANG);
       }
       return bestResultSoFar.appliedPowerCapInWatts_;
     }
@@ -323,7 +283,8 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
       DeviceStateAccumulator& deviceState,
       TargetMetric metric,
       const PowAndPerfResult& reference,
-      int& childProcStatus,
+      int& procStatus,
+      int childProcID,
       int powerSamplingPeriodInMilliSeconds,
       int tuningTimeWindowInMilliSeconds,
       Logger& logger) const override
@@ -352,6 +313,8 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
               tuningTimeWindowInMilliSeconds * 1000,
               powerSamplingPeriodInMilliSeconds,
               deviceState,
+              procStatus,
+              childProcID,
               logger);
             logger.logPowerLogLine(deviceState, fL, reference);
           }
@@ -363,6 +326,8 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
               tuningTimeWindowInMilliSeconds * 1000,
               powerSamplingPeriodInMilliSeconds,
               deviceState,
+              procStatus,
+              childProcID,
               logger);
             logger.logPowerLogLine(deviceState, fR, reference);
           }
@@ -385,6 +350,8 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
             rightCandidateInMicroWatts = a + int(PHI * (b - a));
           }
           logCurrentRangeGSS(a, leftCandidateInMicroiWatts/1000, rightCandidateInMicroWatts/1000, b);
+          waitpid(childProcID, &procStatus, WNOHANG);
+          if (!procStatus) break;
         }
         return (a + b) / 2;
     }

@@ -164,11 +164,11 @@ class GpuEco : public EcoApi
     PowAndPerfResult getReferenceResult(const int referenceSampleTimeInMilliSec);
     PowAndPerfResult checkPowerAndPerformance(int usPeriod);
 
-    int runTunningPhaseLS(
-        int& status,
-        int samplingPeriodInMilliSec,
-        const PowAndPerfResult& referenceResult,
-        TargetMetric metric);
+    // int runTunningPhaseLS(
+    //     int& status,
+    //     int samplingPeriodInMilliSec,
+    //     const PowAndPerfResult& referenceResult,
+    //     TargetMetric metric);
 
     // int runTunningPhaseGSS(
     //     int& status,

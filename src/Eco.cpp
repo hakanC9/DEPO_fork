@@ -28,19 +28,19 @@
 static constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
 Eco::Eco(std::shared_ptr<IntelDevice> d, TriggerType tt) :
-    filter2order_(100), device_(d), devStateGlobal_(d), trigger_(std::make_unique<Trigger>(tt))
+    filter2order_(100), device_(d), devStateGlobal_(d), trigger_(std::make_unique<Trigger>(tt)), logger_("cpu_")
 {
 
-    // include in DirBulder
-    auto dir = generateUniqueResultDir();
-    outResultFileName_ = dir + "/result.csv";
-    if (cfg_.isPowerLogOn_)
-    {
-        outPowerFileName_ = dir + "/power_log.csv";
-        outPowerFile.open(outPowerFileName_, std::ios::out | std::ios::trunc);
-        // below should not be hardcoded but depending on type of series of data
-        outPowerFile << "#time[ms]\tP_cap[W]\tPKG[W]\tSMA50\tSMA100\tSMA200\tDRAM[W]\tabsolute time (for sync with another tests)\n";
-    }
+    // // include in DirBulder
+    // auto dir = generateUniqueResultDir();
+    // outResultFileName_ = dir + "/result.csv";
+    // if (cfg_.isPowerLogOn_)
+    // {
+    //     outPowerFileName_ = dir + "/power_log.csv";
+    //     outPowerFile.open(outPowerFileName_, std::ios::out | std::ios::trunc);
+    //     // below should not be hardcoded but depending on type of series of data
+    //     outPowerFile << "#time[ms]\tP_cap[W]\tPKG[W]\tSMA50\tSMA100\tSMA200\tDRAM[W]\tabsolute time (for sync with another tests)\n";
+    // }
     defaultWatchdog = readWatchdog();
     if (defaultWatchdog == WatchdogStatus::ENABLED)
     {
@@ -67,18 +67,18 @@ Eco::~Eco() {
 }
 
 
-std::string Eco::generateUniqueResultDir() {
-    std::string dir = "cpu_experiment_" + std::to_string(
-            std::chrono::system_clock::to_time_t(
-                  std::chrono::high_resolution_clock::now()));
+// std::string Eco::generateUniqueResultDir() {
+//     std::string dir = "cpu_experiment_" + std::to_string(
+//             std::chrono::system_clock::to_time_t(
+//                   std::chrono::high_resolution_clock::now()));
 
-    const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    if (-1 == dir_err) {
-        printf("Error creating experiment result directory!\n");
-        exit(1);
-    }
-    return dir;
-}
+//     const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+//     if (-1 == dir_err) {
+//         printf("Error creating experiment result directory!\n");
+//         exit(1);
+//     }
+//     return dir;
+// }
 
 static inline int readLimitFromFile (std::string fileName) {
     std::ifstream limitFile (fileName.c_str());
@@ -171,6 +171,7 @@ void Eco::singleAppRunAndPowerSample(char* const* argv) {
                     usleep(cfg_.msPause_ * 1000);
                     devStateGlobal_.sample();
                     logPowerToFile();
+                    logger_.logPowerLogLine(devStateGlobal_, devStateGlobal_.getCurrentPowerAndPerf());
                     waitpid(childProcId, &status, WNOHANG);
                 }
             }
@@ -182,16 +183,16 @@ void Eco::singleAppRunAndPowerSample(char* const* argv) {
     }
 }
 
-void Eco::idleSample(int idleTimeS) {
-    justSample(idleTimeS);
-}
+// void Eco::idleSample(int idleTimeS) {
+//     justSample(idleTimeS);
+// }
 
-void Eco::justSample(int timeS) {
-    int delayUS = timeS * 1000 * 1000;
-    for (int i = 0; i <= delayUS; i+= cfg_.usTestPhasePeriod_) {
-        checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
-    }
-}
+// void Eco::justSample(int timeS) {
+//     int delayUS = timeS * 1000 * 1000;
+//     for (int i = 0; i <= delayUS; i+= cfg_.usTestPhasePeriod_) {
+//         checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
+//     }
+// }
 
 
 PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
@@ -204,8 +205,9 @@ PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
     while (usPeriod > pause){
         usleep(pause);
         devStateGlobal_.sample();
-        logPowerToFile();
+        // logPowerToFile();
         auto tmp = devStateGlobal_.getCurrentPowerAndPerf();
+        logger_.logPowerLogLine(devStateGlobal_, tmp);
         resultAccumulator += tmp;
         // std::cout << "[INFO] Single data point " << tmp << std::endl;
         usPeriod -= pause;
@@ -219,12 +221,12 @@ double Eco::getFilteredPower() {
     return smaFilters_.at(activeFilter_).getSMA();
 }
 
-PowAndPerfResult Eco::setCapAndMeasure(int cap,
-                                       int usPeriod)
-{
-    device_->setPowerLimitInMicroWatts(cap);
-    return checkPowerAndPerformance(usPeriod);
-}
+// PowAndPerfResult Eco::setCapAndMeasure(int cap,
+//                                        int usPeriod)
+// {
+//     device_->setPowerLimitInMicroWatts(cap);
+//     return checkPowerAndPerformance(usPeriod);
+// }
 
 // TODO: try to exclude printing from ECO
 static inline
@@ -294,38 +296,38 @@ void Eco::waitPhase(int& status, int childPID) {
     printLine();
 }
 
-int Eco::testPhase(
-    int& highLimit_uW,
-    int& lowLimit_uW,
-    TargetMetric metric,
-    SearchType searchType,
-    PowAndPerfResult& refResult,
-    int& status,
-    int childPID)
-{
-    highLimit_uW = adjustHighPowLimit(refResult, highLimit_uW);
-    std::cout << logCurrentResultLine(refResult, refResult, cfg_.k_);
-    printLine();
+// int Eco::testPhase(
+//     int& highLimit_uW,
+//     int& lowLimit_uW,
+//     TargetMetric metric,
+//     SearchType searchType,
+//     PowAndPerfResult& refResult,
+//     int& status,
+//     int childPID)
+// {
+//     highLimit_uW = adjustHighPowLimit(refResult, highLimit_uW);
+//     std::cout << logCurrentResultLine(refResult, refResult, cfg_.k_);
+//     printLine();
 
-    switch (searchType) {
-        case SearchType::LINEAR_SEARCH :
-            return linearSearchForBestPowerCap(refResult,
-                                               highLimit_uW,
-                                               lowLimit_uW,
-                                               metric,
-                                               status,
-                                               childPID);
-        case SearchType::GOLDEN_SECTION_SEARCH :
-            return goldenSectionSearchForBestPowerCap(refResult,
-                                                      highLimit_uW,
-                                                      lowLimit_uW,
-                                                      metric,
-                                                      status,
-                                                      childPID);
-        default:
-            return highLimit_uW;
-    }
-}
+//     switch (searchType) {
+//         case SearchType::LINEAR_SEARCH :
+//             return linearSearchForBestPowerCap(refResult,
+//                                                highLimit_uW,
+//                                                lowLimit_uW,
+//                                                metric,
+//                                                status,
+//                                                childPID);
+//         case SearchType::GOLDEN_SECTION_SEARCH :
+//             return goldenSectionSearchForBestPowerCap(refResult,
+//                                                       highLimit_uW,
+//                                                       lowLimit_uW,
+//                                                       metric,
+//                                                       status,
+//                                                       childPID);
+//         default:
+//             return highLimit_uW;
+//     }
+// }
 
 void Eco::execPhase(
     int powerCap_uW,
@@ -341,8 +343,9 @@ void Eco::execPhase(
     {
         auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
         repetitionPeriodInUs = breakOnPeriodTimeout ? repetitionPeriodInUs - cfg_.usTestPhasePeriod_ : repetitionPeriodInUs;
-        std::cout << FLUSH_AND_RETURN;
-        std::cout << logCurrentResultLine(papResult, refResult, cfg_.k_, true /* no new line */);
+        // std::cout << FLUSH_AND_RETURN;
+        // std::cout << logCurrentResultLine(papResult, refResult, cfg_.k_, true /* no new line */);
+        logger_.logPowerLogLine(devStateGlobal_, papResult, refResult);
         waitpid(childPID, &status, WNOHANG);
     }
     std::cout << "\n";
@@ -376,82 +379,82 @@ void Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor)
     validateExecStatus(execStatus);
 }
 
-int Eco::linearSearchForBestPowerCap(
-    PowAndPerfResult& firstResult,
-    int& highLimit_uW,
-    int& lowLimit_uW,
-    TargetMetric metric,
-    int& status,
-    int childPID)
-{
-    int bestCap = highLimit_uW;
-    auto currBestResult = firstResult;
-    int step = ((highLimit_uW - lowLimit_uW)/ 100) * cfg_.percentStep_;
+// int Eco::linearSearchForBestPowerCap(
+//     PowAndPerfResult& firstResult,
+//     int& highLimit_uW,
+//     int& lowLimit_uW,
+//     TargetMetric metric,
+//     int& status,
+//     int childPID)
+// {
+//     int bestCap = highLimit_uW;
+//     auto currBestResult = firstResult;
+//     int step = ((highLimit_uW - lowLimit_uW)/ 100) * cfg_.percentStep_;
 
-    for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step)
-    {
-        auto papResult = setCapAndMeasure(limit_uW, cfg_.usTestPhasePeriod_);
-        std::cout << logCurrentResultLine(papResult, firstResult, cfg_.k_);
-        if (currBestResult.isRightBetter(papResult, metric))
-        {
-            currBestResult = std::move(papResult);
-            bestCap = limit_uW;
-        }
-        waitpid(childPID, &status, WNOHANG);
-        if (!status) break;
-    }
-    return bestCap;
-}
+//     for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step)
+//     {
+//         auto papResult = setCapAndMeasure(limit_uW, cfg_.usTestPhasePeriod_);
+//         std::cout << logCurrentResultLine(papResult, firstResult, cfg_.k_);
+//         if (currBestResult.isRightBetter(papResult, metric))
+//         {
+//             currBestResult = std::move(papResult);
+//             bestCap = limit_uW;
+//         }
+//         waitpid(childPID, &status, WNOHANG);
+//         if (!status) break;
+//     }
+//     return bestCap;
+// }
 
-int Eco::goldenSectionSearchForBestPowerCap(
-    PowAndPerfResult& firstResult,
-    int& highLimit_uW,
-    int& lowLimit_uW,
-    TargetMetric metric,
-    int& status,
-    int childPID)
-{
-    int EPSILON = (highLimit_uW - lowLimit_uW)/ 100;
-    std::cout << "EPSILON: " << EPSILON/1000000 << "\n";
-    int a = lowLimit_uW;
-    int b = highLimit_uW;
-    float phi = (sqrt(5) - 1) / 2; // this is equal 0.618 and it is reverse of 1.618
-    int leftCandidate = b - int(phi * (b - a));
-    int rightCandidate = a + int(phi * (b - a));
-    logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
-    bool measureL = true;
-    bool measureR = true;
-    PowAndPerfResult tmp;
-    while ((b - a) > EPSILON) {
-        auto fL = measureL ? setCapAndMeasure(leftCandidate, cfg_.usTestPhasePeriod_) : tmp;
-        std::cout << logCurrentResultLine(fL, firstResult, cfg_.k_);
-        auto fR = measureR ? setCapAndMeasure(rightCandidate, cfg_.usTestPhasePeriod_) : tmp;
-        std::cout << logCurrentResultLine(fR, firstResult, cfg_.k_);
+// int Eco::goldenSectionSearchForBestPowerCap(
+//     PowAndPerfResult& firstResult,
+//     int& highLimit_uW,
+//     int& lowLimit_uW,
+//     TargetMetric metric,
+//     int& status,
+//     int childPID)
+// {
+//     int EPSILON = (highLimit_uW - lowLimit_uW)/ 100;
+//     std::cout << "EPSILON: " << EPSILON/1000000 << "\n";
+//     int a = lowLimit_uW;
+//     int b = highLimit_uW;
+//     float phi = (sqrt(5) - 1) / 2; // this is equal 0.618 and it is reverse of 1.618
+//     int leftCandidate = b - int(phi * (b - a));
+//     int rightCandidate = a + int(phi * (b - a));
+//     logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
+//     bool measureL = true;
+//     bool measureR = true;
+//     PowAndPerfResult tmp;
+//     while ((b - a) > EPSILON) {
+//         auto fL = measureL ? setCapAndMeasure(leftCandidate, cfg_.usTestPhasePeriod_) : tmp;
+//         std::cout << logCurrentResultLine(fL, firstResult, cfg_.k_);
+//         auto fR = measureR ? setCapAndMeasure(rightCandidate, cfg_.usTestPhasePeriod_) : tmp;
+//         std::cout << logCurrentResultLine(fR, firstResult, cfg_.k_);
 
-        if (!fL.isRightBetter(fR, metric)) {
-            // choose subrange [a, rightCandidate]
-            b = rightCandidate;
-            rightCandidate = leftCandidate;
-            tmp = fL;
-            measureR = false;
-            measureL = true;
-            leftCandidate = b - int(phi * (b - a));
-        } else {
-            // choose subrange [leftCandidate, b]
-            a = leftCandidate;
-            leftCandidate = rightCandidate;
-            tmp = fR;
-            measureR = true;
-            measureL = false;
-            rightCandidate = a + int(phi * (b - a));
-        }
-        logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
-        waitpid(childPID, &status, WNOHANG);
-        if (!status) break;
-    }
-    // when stop condition was met return the middle of the subrange found
-    return (a + b) / 2;
-}
+//         if (!fL.isRightBetter(fR, metric)) {
+//             // choose subrange [a, rightCandidate]
+//             b = rightCandidate;
+//             rightCandidate = leftCandidate;
+//             tmp = fL;
+//             measureR = false;
+//             measureL = true;
+//             leftCandidate = b - int(phi * (b - a));
+//         } else {
+//             // choose subrange [leftCandidate, b]
+//             a = leftCandidate;
+//             leftCandidate = rightCandidate;
+//             tmp = fR;
+//             measureR = true;
+//             measureL = false;
+//             rightCandidate = a + int(phi * (b - a));
+//         }
+//         logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
+//         waitpid(childPID, &status, WNOHANG);
+//         if (!status) break;
+//     }
+//     // when stop condition was met return the middle of the subrange found
+//     return (a + b) / 2;
+// }
 
 FinalPowerAndPerfResult Eco::runAppWithSearch(
     char* const* argv,
@@ -489,18 +492,29 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
             //----------------------------------------------------------------------------
             while (status)
             {
-                auto referenceResult = checkPowerAndPerformance(cfg_.referenceRunMultiplier_ * cfg_.usTestPhasePeriod_);
-                int bestCap = -1;
+                PowAndPerfResult referenceRun = checkPowerAndPerformance(cfg_.referenceRunMultiplier_ * cfg_.usTestPhasePeriod_);
+                int bestResultCap = -1;
                 testTime += measureDuration([&, this] {
-                    bestCap = testPhase(highPowLimit_uW,
-                                        lowPowLimit_uW,
-                                        targerMetric,
-                                        searchType,
-                                        referenceResult,
-                                        status,
-                                        childProcId);
+                    Algorithm algorithm;
+                    if (searchType == SearchType::LINEAR_SEARCH)
+                    {
+                        algorithm = LinearSearchAlgorithm();
+                    }
+                    else
+                    {
+                        algorithm = GoldenSectionSearchAlgorithm();
+                    }
+                    bestResultCap = algorithm(device_, devStateGlobal_, targerMetric, referenceRun, status, childProcId, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
+                    // bestCap = testPhase(highPowLimit_uW,
+                    //                     lowPowLimit_uW,
+                    //                     targerMetric,
+                    //                     searchType,
+                    //                     referenceResult,
+                    //                     status,
+                    //                     childProcId);
+                    // waitpid(childProcId, &status, WNOHANG);
                 });
-                execPhase(bestCap, status, childProcId, referenceResult, cfg_.repeatTuningPeriodInSec_ != 0);
+                execPhase(bestResultCap, status, childProcId, referenceRun, cfg_.repeatTuningPeriodInSec_ != 0);
                 dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
                 // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
             }
@@ -675,7 +689,11 @@ void Eco::modifyWatchdog(WatchdogStatus status) {
 }
 
 void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
-    std::string imgFileName = outPowerFileName_;
+    logger_.flushAndClose();
+    const auto f = logger_.getPowerFileName();
+    // std::string imgFileName = outPowerFileName_;
+    std::cout << "Processing " << f << " file...\n";
+    std::string imgFileName = f;
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 3,
                                       imgFileName.end(),
                                       "png"));
@@ -690,16 +708,22 @@ void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
         // << "    last powercap: " << results->powercap << " W";
         p.setSimpleSubtitle(ss.str(), 12);
     }
-    Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
-    Series currPKGpower (outPowerFileName_, 1, 3, "current PKG P[W]");
-    Series currSMA50power (outPowerFileName_, 1, 4, "SMA50 PKG P[W]");
-    Series currSMA100power (outPowerFileName_, 1, 5, "filtered PKG P[W]");
-    Series currSMA200power (outPowerFileName_, 1, 6, "SMA200 PKG P[W]");
-    Series currDRAMpower (outPowerFileName_, 1, 7, "current DRAM P[W]");
+    Series powerCap (f, 1, 2, "P cap [W]");
+    Series currPower (f, 1, 3, "P[W]");
+    Series currENG (f, 1, 7, "ENG");
+    Series currEDP (f, 1, 8, "EDP");
+    Series currPERF (f, 1, 9, "PERF");
+    // Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
+    // Series currPKGpower (outPowerFileName_, 1, 3, "current PKG P[W]");
+    // Series currSMA50power (outPowerFileName_, 1, 4, "SMA50 PKG P[W]");
+    // Series currSMA100power (outPowerFileName_, 1, 5, "filtered PKG P[W]");
+    // Series currSMA200power (outPowerFileName_, 1, 6, "SMA200 PKG P[W]");
+    // Series currDRAMpower (outPowerFileName_, 1, 7, "current DRAM P[W]");
     p.plotPowerLog({powerCap,
-                    currDRAMpower,
-                    currPKGpower,
-                    currSMA100power});
+                    currPower//,
+                    // currPKGpower,
+                    // currSMA100power
+                    });
 }
 
 void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {

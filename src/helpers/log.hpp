@@ -90,3 +90,52 @@ std::string logCurrentGpuResultLine(
     }
     return sstream.str();
 }
+
+
+class Logger
+{
+  public:
+    Logger(std::string prefix)
+    {
+        const auto dir = generateUniqueDir(prefix);
+        powerFileName_ = dir + "power_log.csv";
+        resultFileName_ = dir + "result.csv";
+        powerFile_.open(powerFileName_, std::ios::out | std::ios::trunc);
+        resultFile_.open(resultFileName_, std::ios::out | std::ios::trunc);
+        bout_ = std::make_unique<BothStream>(powerFile_);
+    }
+    void logPowerLogLine(DeviceStateAccumulator& deviceState, PowAndPerfResult current, const std::optional<PowAndPerfResult> reference = std::nullopt)
+    {
+        *bout_  << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), current, reference);
+    }
+    std::string getPowerFileName() const
+    {
+        return powerFileName_;
+    }
+    void flushAndClose() // might be useless
+    {
+        bout_->flush();
+        powerFile_.close();
+    }
+  private:
+    std::string powerFileName_;
+    std::ofstream powerFile_;
+    std::string resultFileName_;
+    std::ofstream resultFile_;
+    std::unique_ptr<BothStream> bout_;
+
+    std::string generateUniqueDir(std::string prefix = "")
+    {
+        std::string dir = prefix + "experiment_" +
+            std::to_string(
+                std::chrono::system_clock::to_time_t(
+                      std::chrono::high_resolution_clock::now()));
+        dir += "/";
+        const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        if (-1 == dir_err) {
+            printf("Error creating experiment result directory!\n");
+            exit(1);
+        }
+        return dir;
+    }
+};
