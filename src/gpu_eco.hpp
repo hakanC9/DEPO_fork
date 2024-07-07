@@ -192,6 +192,7 @@ class GpuEco : public EcoApi
     std::ofstream outPowerFile_;
     std::unique_ptr<BothStream> bout_;
     Logger logger_;
+    Trigger trigger_;
   public:
     std::string outPowerFileName_;
 };

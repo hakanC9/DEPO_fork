@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -65,11 +65,13 @@ std::string logCurrentGpuResultLine(
             << std::fixed << std::setprecision(2)
             << "\t\t" << curr.appliedPowerCapInWatts_
             << "\t\t" << curr.averageCorePowerInWatts_
+            << "\t\t " << curr.filteredPowerOfLimitedDomainInWatts_
             << "\t\t" << curr.energyInJoules_
             // << "\t\t" << currKernelsCount
             << "\t\t" << curr.instructionsCount_
             << std::fixed << std::setprecision(3)
             << "\t\t" << curr.getInstrPerJoule() * 1000;
+
     if (reference.has_value())
     {
         double currRelativeENG = curr.getEnergyPerInstr() / reference.value().getEnergyPerInstr();

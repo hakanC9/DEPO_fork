@@ -33,6 +33,8 @@
 #include "helpers/data_filter.hpp"
 #include "helpers/both_stream.hpp"
 #include "helpers/log.hpp"
+#include "trigger.hpp"
+
 
 template <class F>
 inline auto measureDuration(F&& fun)
@@ -49,34 +51,6 @@ void validateExecStatus(int status) {
                   << " " << strerror(errno) << std::endl;
     }
 }
-
-enum class TriggerType
-{
-  NO_TUNING,
-  SINGLE_IMMEDIATE_TUNING,
-  SINGLE_TUNING_WITH_WAIT,
-  PERIODIC_IMMEDIATE_TUNING,
-  PERIODIC_TUNING_WITH_WAIT,
-  EXTERNAL_TRIGGER_FOR_TUNING,
-};
-
-class Trigger
-{
-  public:
-    Trigger() = delete;
-    Trigger(TriggerType tt) :
-      type_(tt) {}
-    ~Trigger() = default;
-
-    bool checkTunningPhaseTrigger()
-    {
-      return true;
-    }
-
-  private:
-    TriggerType type_;
-};
-
 
 class EcoApi
 {
@@ -99,6 +73,18 @@ class EcoApi
     std::string outResultFileName_;
     std::string outPowerFileName_;
 };
+
+using Algorithm = std::function<unsigned(
+  std::shared_ptr<Device>,
+  DeviceStateAccumulator&,
+  Trigger&,
+  TargetMetric,
+  const PowAndPerfResult&,
+  int&,
+  int,
+  int,
+  int,
+  Logger&)>;
 
 class Eco : public EcoApi
 {
@@ -123,25 +109,15 @@ class Eco : public EcoApi
     virtual ~Eco();
 
   protected:
-    enum class FilterType {
-        SMA50,
-        SMA100,
-        SMA200,
-        SMA_1_S,
-        SMA_2_S,
-        SMA_5_S,
-        SMA_10_S,
-        SMA_20_S
-    };
   private:
-    std::unique_ptr<Trigger> trigger_;
-    std::map<FilterType, DataFilter> smaFilters_;
-    FilterType activeFilter_ {FilterType::SMA100};
-    DataFilter filter2order_;
+    Trigger trigger_;
+    // std::map<FilterType, DataFilter> smaFilters_;
+    // FilterType activeFilter_ {FilterType::SMA100};
+    // DataFilter filter2order_;
     std::shared_ptr<Device> device_;
     CrossDomainQuantity idleAvPow_;
-    double pprevSMA_ {0.0}, prevSMA_ {0.0};
-    bool optimizationTrigger_ {false};
+    // double pprevSMA_ {0.0}, prevSMA_ {0.0};
+    // bool optimizationTrigger_ {false};
 
     DeviceStateAccumulator devStateGlobal_;
     // DeviceStateAccumulator devStateLocal_;
@@ -149,14 +125,14 @@ class Eco : public EcoApi
     Logger logger_;
 
     WatchdogStatus defaultWatchdog;
-    std::ofstream outPowerFile;
+    // std::ofstream outPowerFile;
     double defaultPowerLimitInWatts_; // PKG domain power limit
 
-    void storeDataPointToFilters(double);
-    double getFilteredPower();
+    // void storeDataPointToFilters(double);
+    // double getFilteredPower();
     void modifyWatchdog(WatchdogStatus);
     WatchdogStatus readWatchdog();
-    void logPowerToFile();
+    // void logPowerToFile();
     std::string generateUniqueResultDir();
     std::vector<int> generateVecOfPowerCaps(Domain = PowerCapDomain::PKG);
     void singleAppRunAndPowerSample(char* const*);
@@ -167,7 +143,7 @@ class Eco : public EcoApi
     void reportResult(double = 0.0, double = 0.0);
     void waitPhase(int&, int);
     // int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
-    void execPhase(int, int&, int, PowAndPerfResult&, bool = false);
+    void execPhase(int, int&, int, PowAndPerfResult&, Algorithm&, bool = false);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
     // int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
@@ -176,14 +152,13 @@ class Eco : public EcoApi
 
 #include <sys/wait.h>
 
-using Algorithm = std::function<unsigned(std::shared_ptr<Device>,DeviceStateAccumulator&,TargetMetric,const PowAndPerfResult&,int&,int,int,int,Logger&)>;
-
 class SearchAlgorithm
 {
   public:
     virtual unsigned operator() (
       std::shared_ptr<Device>,
       DeviceStateAccumulator&,
+      Trigger&,
       TargetMetric,
       const PowAndPerfResult&,
       int&,
@@ -196,6 +171,7 @@ class SearchAlgorithm
       int tuningTimeWindowInMicroSeconds,
       int powerSamplingPeriodInMilliSeconds,
       DeviceStateAccumulator& deviceState,
+      Trigger& trigger,
       int& procStatus,
       int childProcID,
       Logger& logger)
@@ -209,8 +185,7 @@ class SearchAlgorithm
       {
         usleep(pauseInMicroSeconds);
         deviceState.sample();
-        // logPowerToFile();
-        auto tmp = deviceState.getCurrentPowerAndPerf();
+        auto tmp = deviceState.getCurrentPowerAndPerf(trigger);
         logger.logPowerLogLine(deviceState, tmp);
         resultAccumulator += tmp;
         tuningTimeWindowInMicroSeconds -= pauseInMicroSeconds;
@@ -229,6 +204,7 @@ class LinearSearchAlgorithm : public SearchAlgorithm
     unsigned operator() (
       std::shared_ptr<Device> device,
       DeviceStateAccumulator& deviceState,
+      Trigger& trigger,
       TargetMetric metric,
       const PowAndPerfResult& reference,
       int& procStatus,
@@ -252,6 +228,7 @@ class LinearSearchAlgorithm : public SearchAlgorithm
           tuningTimeWindowInMilliSeconds * 1e3,
           powerSamplingPeriodInMilliSeconds,
           deviceState,
+          trigger,
           procStatus,
           childProcID,
           logger);
@@ -271,7 +248,7 @@ class LinearSearchAlgorithm : public SearchAlgorithm
         }
         waitpid(childProcID, &procStatus, WNOHANG);
       }
-      return bestResultSoFar.appliedPowerCapInWatts_;
+      return (unsigned)(bestResultSoFar.appliedPowerCapInWatts_ * 1e6);
     }
 };
 
@@ -281,6 +258,7 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
     unsigned operator() (
       std::shared_ptr<Device> device,
       DeviceStateAccumulator& deviceState,
+      Trigger& trigger,
       TargetMetric metric,
       const PowAndPerfResult& reference,
       int& procStatus,
@@ -313,6 +291,7 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
               tuningTimeWindowInMilliSeconds * 1000,
               powerSamplingPeriodInMilliSeconds,
               deviceState,
+              trigger,
               procStatus,
               childProcID,
               logger);
@@ -326,6 +305,7 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
               tuningTimeWindowInMilliSeconds * 1000,
               powerSamplingPeriodInMilliSeconds,
               deviceState,
+              trigger,
               procStatus,
               childProcID,
               logger);

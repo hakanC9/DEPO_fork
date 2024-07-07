@@ -18,6 +18,7 @@
 
 #include "Device.hpp"
 #include "../helpers/power_and_perf_result.hpp"
+#include "../trigger.hpp"
 
 using TimePoint = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
@@ -45,7 +46,7 @@ public:
       returns the PowerAndPerfResult struct with the data based on the difference
       between next and current state. Such data is used for power log.
     */
-    PowAndPerfResult getCurrentPowerAndPerf() const;
+    PowAndPerfResult getCurrentPowerAndPerf(std::optional<std::reference_wrapper<Trigger>> trigger = std::nullopt) const;
 
     /*
       getEnergySinceReset - is used for the final evaluation of energy consumed

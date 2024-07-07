@@ -281,7 +281,7 @@ unsigned long long int CudaDevice::getPerfCounter() const
 // }
 
 
-GpuEco::GpuEco(int deviceID) : deviceID_(deviceID), logger_("gpu_")
+GpuEco::GpuEco(int deviceID) : deviceID_(deviceID), logger_("gpu_"), trigger_(TriggerType::NO_TUNING)
 {
     gpu_ = std::make_shared<CudaDevice>(deviceID);
     deviceState_ = std::make_unique<DeviceStateAccumulator>(gpu_);
@@ -305,7 +305,7 @@ void GpuEco::idleSample(int sleepPeriodInMs)
 {
     usleep(sleepPeriodInMs * 1000);
     deviceState_->sample();
-    auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+    auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(trigger_);
     // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult);
     logger_.logPowerLogLine(*deviceState_, tmpResult);
     }
@@ -437,29 +437,41 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
     SearchType searchType,
     int argc)
 {
-    std::string command;
-    for (int i=1; i < argc; i++)
-    {
-        command += argv[i];
-        command += " ";
-    }
+    // std::string command;
+    // for (int i=1; i < argc; i++)
+    // {
+    //     command += argv[i];
+    //     command += " ";
+    // }
+    // this is redirecting the original output of the tuned application to txt file
+    int fd = open("redirected.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0) { perror("open"); abort(); }
+    // ----------------------------------------------------------------------------
     deviceState_->resetState();
 
     double waitTime = 0.0, testTime = 0.0;
-    int bestResultCap = 300;
+    int bestResultCapInMicroWatts = 300;
     pid_t childProcId = fork();
     if (childProcId >= 0)
     {
         if (childProcId == 0)
         {
-            std::cout << "ENV1 value: " << getenv("INJECTION_KERNEL_COUNT")
-                  << "\nENV2 value: " << getenv("CUDA_INJECTION64_PATH") << "\n";
-            std::cout << "||||| my pid " << getpid() << " parent " << getppid() << std::endl;
+            // std::cout << "ENV1 value: " << getenv("INJECTION_KERNEL_COUNT")
+            //       << "\nENV2 value: " << getenv("CUDA_INJECTION64_PATH") << "\n";
+            // std::cout << "||||| my pid " << getpid() << " parent " << getppid() << std::endl;
             // int execStatus = system(command.c_str());
-            int execStatus = execvp(argv[1], argv+1);
+            // int execStatus = execvp(argv[1], argv+1);
 
+            // validateExecStatus(execStatus);
+            if (dup2(fd, 1) < 0) {
+                perror("dup2");
+                abort();
+            }
+            close(fd);
+
+            int execStatus = execvp(argv[1], argv+1);
             validateExecStatus(execStatus);
-            exit(0);
+            // exit(0);
         }
         else
         {
@@ -473,21 +485,18 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
 
                 referenceRun = getReferenceResult(cfg_.msTestPhasePeriod_);
 
-                // std::function<unsigned(std::shared_ptr<Device>,DeviceStateAccumulator&,TargetMetric,const PowAndPerfResult&,int&,int,int,Logger&)> algorithm;
                 Algorithm algorithm;
                 if (searchType == SearchType::LINEAR_SEARCH)
                 {
                     algorithm = LinearSearchAlgorithm();
-                    // bestResultCap = runTunningPhaseLS(status, cfg_.msTestPhasePeriod_, referenceRun, metric);
                 }
                 else
                 {
                     algorithm = GoldenSectionSearchAlgorithm();
-                    // bestResultCap = runTunningPhaseGSS(status, cfg_.msTestPhasePeriod_, referenceRun, metric);
                 }
-                bestResultCap = algorithm(gpu_, *deviceState_, metric, referenceRun, status, childProcId, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
+                bestResultCapInMicroWatts = algorithm(gpu_, *deviceState_, trigger_, metric, referenceRun, status, childProcId, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
             });
-            executeWithPowercap(status, bestResultCap, cfg_.msPause_, childProcId, referenceRun);
+            executeWithPowercap(status, bestResultCapInMicroWatts, cfg_.msPause_, childProcId, referenceRun);
             gpu_->setPowerLimitInMicroWatts(1e6 * defaultPowerLimitInWatts_);
             wait(&status);
         }
@@ -499,7 +508,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
     }
     const auto&& execTime = deviceState_->getTimeSinceReset<std::chrono::milliseconds>() / 1000;
     return FinalPowerAndPerfResult(
-        bestResultCap,
+        bestResultCapInMicroWatts / 1.0e6,
         deviceState_->getEnergySinceReset(),
         deviceState_->getEnergySinceReset() / execTime,
         0.0,
@@ -541,10 +550,11 @@ void GpuEco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results)
     // Series currPERF (outPowerFileName_, 1, 9, "PERF");
     Series powerCap (f, 1, 2, "P cap [W]");
     Series currPower (f, 1, 3, "P[W]");
+    Series smaPower (f, 1, 4, "P[W]");
     Series currENG (f, 1, 7, "ENG");
     Series currEDP (f, 1, 8, "EDP");
     Series currPERF (f, 1, 9, "PERF");
-    p.plotPowerLog({powerCap, currPower/*, currENG, currEDP, currPERF*/});
+    p.plotPowerLog({powerCap, currPower, smaPower/*, currENG, currEDP, currPERF*/});
     p.submitPlot();
 }
 
@@ -555,7 +565,7 @@ void GpuEco::waitForGpuComputeActivity(int& status, int samplingPeriodInMilliSec
     {
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(trigger_);
         // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult);
         logger_.logPowerLogLine(*deviceState_, tmpResult);
         if (tmpResult.instructionsCount_ > 0)
@@ -682,17 +692,17 @@ PowAndPerfResult GpuEco::getReferenceResult(const int referenceSampleTimeInMilli
 
 void GpuEco::executeWithPowercap(
     int& status,
-    unsigned powercapInWatts,
+    unsigned powercapInMicroWatts,
     int samplingPeriodInMilliSec,
     int childPID,
     const PowAndPerfResult& referenceResult)
 {
-    gpu_->setPowerLimitInMicroWatts(powercapInWatts * 1e6);
+    gpu_->setPowerLimitInMicroWatts(powercapInMicroWatts);
     while (status)
     {
         usleep(samplingPeriodInMilliSec * 1000);
         deviceState_->sample();
-        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf();
+        auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(trigger_);
         logger_.logPowerLogLine(*deviceState_, tmpResult, referenceResult);
         // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, referenceResult);
         waitpid(childPID, &status, WNOHANG);
@@ -704,13 +714,13 @@ PowAndPerfResult GpuEco::checkPowerAndPerformance(int usPeriod)
     auto pause = cfg_.msPause_ * 1000;
     usleep(pause);
     deviceState_->sample();
-    auto resultAccumulator = deviceState_->getCurrentPowerAndPerf();
+    auto resultAccumulator = deviceState_->getCurrentPowerAndPerf(trigger_);
     // std::cout << "\n[INFO] Firstt data point " << resultAccumulator << std::endl;
     while (usPeriod > pause){
         usleep(pause);
         deviceState_->sample();
         // logPowerToFile();
-        auto tmp = deviceState_->getCurrentPowerAndPerf();
+        auto tmp = deviceState_->getCurrentPowerAndPerf(trigger_);
         // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmp);
         logger_.logPowerLogLine(*deviceState_, tmp);
         resultAccumulator += tmp;
