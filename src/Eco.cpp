@@ -29,7 +29,7 @@
 #include <filesystem>
 
 namespace fs = std::filesystem;
-std::atomic<bool> trigger_flag(false);
+std::atomic<bool> external_trigger_flag(false);
 std::atomic<bool> stop_flag(false);
 const std::string trigger_file_path = "/tmp/trigger_file";
 
@@ -43,7 +43,7 @@ void monitor_trigger_file() {
             auto current_write_time = fs::last_write_time(trigger_file_path);
             if (current_write_time != last_write_time) {
                 last_write_time = current_write_time;
-                trigger_flag.store(true);
+                external_trigger_flag.store(true);
             }
         }
     }
@@ -51,58 +51,21 @@ void monitor_trigger_file() {
 
 static constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
-Eco::Eco(std::shared_ptr<IntelDevice> d, TriggerType tt) :
-    // filter2order_(100),
-    device_(d), devStateGlobal_(d), trigger_(TriggerType::SINGLE_TUNING_WITH_WAIT), logger_("cpu_")
+Eco::Eco(std::shared_ptr<Device> d, TriggerType tt) :
+    device_(d), devStateGlobal_(d), trigger_(tt), logger_(d->getDeviceTypeString())
 {
-    // // include in DirBulder
-    // auto dir = generateUniqueResultDir();
-    // outResultFileName_ = dir + "/result.csv";
-    // if (cfg_.isPowerLogOn_)
-    // {
-    //     outPowerFileName_ = dir + "/power_log.csv";
-    //     outPowerFile.open(outPowerFileName_, std::ios::out | std::ios::trunc);
-    //     // below should not be hardcoded but depending on type of series of data
-    //     outPowerFile << "#time[ms]\tP_cap[W]\tPKG[W]\tSMA50\tSMA100\tSMA200\tDRAM[W]\tabsolute time (for sync with another tests)\n";
-    // }
     defaultWatchdog = readWatchdog();
     if (defaultWatchdog == WatchdogStatus::ENABLED)
     {
         modifyWatchdog(WatchdogStatus::DISABLED);
     }
-
-    // smaFilters_.emplace(FilterType::SMA50, 50);
-    // smaFilters_.emplace(FilterType::SMA100, 100);
-    // smaFilters_.emplace(FilterType::SMA200, 200);
-    // smaFilters_.emplace(FilterType::SMA_1_S, 1000 / cfg_.msPause_);
-    // smaFilters_.emplace(FilterType::SMA_2_S, 2000 / cfg_.msPause_);
-    // smaFilters_.emplace(FilterType::SMA_5_S, 5000 / cfg_.msPause_);
-    // smaFilters_.emplace(FilterType::SMA_10_S, 10000 / cfg_.msPause_);
-    // smaFilters_.emplace(FilterType::SMA_20_S, 20000 / cfg_.msPause_);
-    defaultPowerLimitInWatts_ = device_->getPowerLimitInWatts();
-    std::cout << "[DEBUG] defaultPowerLimitInWatts_ stored: " << defaultPowerLimitInWatts_ << std::endl;
+    device_->reset();
 }
 
 Eco::~Eco() {
-    dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
-    // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
+    device_->restoreDefaultLimits();
     modifyWatchdog(defaultWatchdog);
-    // outPowerFile.close();
 }
-
-
-// std::string Eco::generateUniqueResultDir() {
-//     std::string dir = "cpu_experiment_" + std::to_string(
-//             std::chrono::system_clock::to_time_t(
-//                   std::chrono::high_resolution_clock::now()));
-
-//     const int dir_err = mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-//     if (-1 == dir_err) {
-//         printf("Error creating experiment result directory!\n");
-//         exit(1);
-//     }
-//     return dir;
-// }
 
 static inline int readLimitFromFile (std::string fileName) {
     std::ifstream limitFile (fileName.c_str());
@@ -131,7 +94,7 @@ static inline void writeLimitToFile (std::string fileName, int limit) {
     outfile.close();
 }
 
-std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
+std::vector<int> Eco::prepareListOfPowerCapsInMicroWatts(/*Domain dom*/) { // domain is unused, probably to be removed
     std::vector<int> powerLimitsVec;
 
     const auto minmax = device_->getMinMaxLimitInWatts();
@@ -147,34 +110,6 @@ std::vector<int> Eco::generateVecOfPowerCaps(Domain dom) {
 }
 
 using MS = std::chrono::milliseconds;
-
-// void Eco::storeDataPointToFilters(double currPower) {
-//     for (auto&& filter : smaFilters_) {
-//         filter.second.storeDataPoint(currPower);
-//     }
-// }
-
-// void Eco::logPowerToFile()
-// {
-//     // filter2order_.storeDataPoint(smaFilters_.at(FilterType::SMA_20_S).getSMA());
-//     auto currPower = devStateGlobal_.getCurrentPower(Domain::PKG);
-//     // storeDataPointToFilters(currPower);
-//     // auto currSMA = smaFilters_.at(FilterType::SMA_20_S).getSMA();
-//     // optimizationTrigger_ = filter2order_.getCleanedRelativeError() < 0.03;
-//     if (outPowerFile.is_open()) {
-//         outPowerFile << std::fixed << std::setprecision(4)
-//                      << devStateGlobal_.getTimeSinceObjectCreation<MS>()
-//                      << "\t" << device_->getPowerLimitInWatts() << "\t"
-//                      << currPower << "\t"
-//                     //  << currSMA << "\t"
-//                     //  << filter2order_.getSMA() << "\t"
-//                     //  << filter2order_.getCleanedRelativeError() << "\t"
-//                      << devStateGlobal_.getCurrentPower(Domain::DRAM) << "\t"
-//                      << std::chrono::duration_cast<MS>(
-//                          std::chrono::high_resolution_clock::now().time_since_epoch()).count()
-//                      << std::endl;
-//     }
-// }
 
 
 void Eco::singleAppRunAndPowerSample(char* const* argv) {
@@ -207,18 +142,6 @@ void Eco::singleAppRunAndPowerSample(char* const* argv) {
     }
 }
 
-// void Eco::idleSample(int idleTimeS) {
-//     justSample(idleTimeS);
-// }
-
-// void Eco::justSample(int timeS) {
-//     int delayUS = timeS * 1000 * 1000;
-//     for (int i = 0; i <= delayUS; i+= cfg_.usTestPhasePeriod_) {
-//         checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
-//     }
-// }
-
-
 PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
 {
     auto pause = cfg_.msPause_ * 1000;
@@ -229,7 +152,6 @@ PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
     while (usPeriod > pause){
         usleep(pause);
         devStateGlobal_.sample();
-        // logPowerToFile();
         auto tmp = devStateGlobal_.getCurrentPowerAndPerf(trigger_);
         logger_.logPowerLogLine(devStateGlobal_, tmp);
         resultAccumulator += tmp;
@@ -240,17 +162,6 @@ PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
 
     return resultAccumulator;
 }
-
-// double Eco::getFilteredPower() {
-//     return smaFilters_.at(activeFilter_).getSMA();
-// }
-
-// PowAndPerfResult Eco::setCapAndMeasure(int cap,
-//                                        int usPeriod)
-// {
-//     device_->setPowerLimitInMicroWatts(cap);
-//     return checkPowerAndPerformance(usPeriod);
-// }
 
 // TODO: try to exclude printing from ECO
 static inline
@@ -307,60 +218,24 @@ void Eco::reportResult(double waitTime, double testTime) {
     }
 }
 
-void Eco::waitPhase(int& status, int childPID) {
+void Eco::waitForTuningTrigger(int& status, int childPID) {
     waitpid(childPID, &status, WNOHANG);
-    // optimizationTrigger_ = false; // reset trigger before workload starts
     while ((!trigger_.isDeviceReadyForTuning()) && status)
     {
-        // wait until application runs homogenous workload (skip computation start up)
         auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
         std::cout << FLUSH_AND_RETURN
-                  << logCurrentResultLine(papResult, papResult, cfg_.k_, true /* no new line */);
+                << logCurrentResultLine(papResult, papResult, cfg_.k_, true /* no new line */);
+
     }
     std::cout << "\n";
     printLine();
 }
 
-// int Eco::testPhase(
-//     int& highLimit_uW,
-//     int& lowLimit_uW,
-//     TargetMetric metric,
-//     SearchType searchType,
-//     PowAndPerfResult& refResult,
-//     int& status,
-//     int childPID)
-// {
-//     highLimit_uW = adjustHighPowLimit(refResult, highLimit_uW);
-//     std::cout << logCurrentResultLine(refResult, refResult, cfg_.k_);
-//     printLine();
-
-//     switch (searchType) {
-//         case SearchType::LINEAR_SEARCH :
-//             return linearSearchForBestPowerCap(refResult,
-//                                                highLimit_uW,
-//                                                lowLimit_uW,
-//                                                metric,
-//                                                status,
-//                                                childPID);
-//         case SearchType::GOLDEN_SECTION_SEARCH :
-//             return goldenSectionSearchForBestPowerCap(refResult,
-//                                                       highLimit_uW,
-//                                                       lowLimit_uW,
-//                                                       metric,
-//                                                       status,
-//                                                       childPID);
-//         default:
-//             return highLimit_uW;
-//     }
-// }
-
 void Eco::execPhase(
     int powerCap_uW,
     int& status,
     int childPID,
-    PowAndPerfResult& refResult,
-    Algorithm& algorithm,
-    bool breakOnPeriodTimeout)
+    PowAndPerfResult& refResult)
 {
     int repetitionPeriodInUs = cfg_.repeatTuningPeriodInSec_ * 1e6 + cfg_.usTestPhasePeriod_;
     device_->setPowerLimitInMicroWatts(powerCap_uW);
@@ -368,19 +243,16 @@ void Eco::execPhase(
     while (status && repetitionPeriodInUs > 0)
     {
         auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
-        repetitionPeriodInUs = breakOnPeriodTimeout ? repetitionPeriodInUs - cfg_.usTestPhasePeriod_ : repetitionPeriodInUs;
+        repetitionPeriodInUs = trigger_.isTuningPeriodic() ? repetitionPeriodInUs - cfg_.usTestPhasePeriod_ : repetitionPeriodInUs;
         // std::cout << FLUSH_AND_RETURN;
         // std::cout << logCurrentResultLine(papResult, refResult, cfg_.k_, true /* no new line */);
         logger_.logPowerLogLine(devStateGlobal_, papResult, refResult);
         waitpid(childPID, &status, WNOHANG);
-        if (trigger_flag.load())
+        if (external_trigger_flag.load())
         {
-            std::cout << "Trigger received before restarting loop. Re-tuning parameters...\n";
-            dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
-            refResult = checkPowerAndPerformance(cfg_.referenceRunMultiplier_ * cfg_.usTestPhasePeriod_);
-            powerCap_uW = algorithm(device_, devStateGlobal_, trigger_, TargetMetric::MIN_E, refResult, status, childPID, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
-            device_->setPowerLimitInMicroWatts(powerCap_uW);
-            trigger_flag.store(false);
+            std::cout << "[INFO] External trigger received during execution phase. Re-tuning parameters...\n";
+            external_trigger_flag.store(false);
+            break;
         }
     }
     std::cout << "\n";
@@ -389,12 +261,13 @@ void Eco::execPhase(
 
 int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW)
 {
-    // check if default power cap is higher than max power cap (TDP)
-    if (currHighLimit_uW < dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower) {
-        currHighLimit_uW = dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower;
-    // if (currHighLimit_uW < defaultPowerLimitInWatts_) {
-    //     currHighLimit_uW = defaultPowerLimitInWatts_;
-    }
+    // // check if default power cap is higher than max power cap (TDP)
+    // if (currHighLimit_uW < dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower)
+    // {
+    //     currHighLimit_uW = dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower;
+    // // if (currHighLimit_uW < defaultPowerLimitInWatts_) {
+    // //     currHighLimit_uW = defaultPowerLimitInWatts_;
+    // }
     // reduce starting high power limit according to first result's average power
     if ((firstResult.averageCorePowerInWatts_ * 1000000) < (currHighLimit_uW/2)) {
         currHighLimit_uW = (firstResult.averageCorePowerInWatts_ * 1000000) * 2.0;
@@ -413,83 +286,6 @@ void Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor)
     int execStatus = execvp(argv[1], argv+1);
     validateExecStatus(execStatus);
 }
-
-// int Eco::linearSearchForBestPowerCap(
-//     PowAndPerfResult& firstResult,
-//     int& highLimit_uW,
-//     int& lowLimit_uW,
-//     TargetMetric metric,
-//     int& status,
-//     int childPID)
-// {
-//     int bestCap = highLimit_uW;
-//     auto currBestResult = firstResult;
-//     int step = ((highLimit_uW - lowLimit_uW)/ 100) * cfg_.percentStep_;
-
-//     for (int limit_uW = lowLimit_uW ; limit_uW < highLimit_uW; limit_uW += step)
-//     {
-//         auto papResult = setCapAndMeasure(limit_uW, cfg_.usTestPhasePeriod_);
-//         std::cout << logCurrentResultLine(papResult, firstResult, cfg_.k_);
-//         if (currBestResult.isRightBetter(papResult, metric))
-//         {
-//             currBestResult = std::move(papResult);
-//             bestCap = limit_uW;
-//         }
-//         waitpid(childPID, &status, WNOHANG);
-//         if (!status) break;
-//     }
-//     return bestCap;
-// }
-
-// int Eco::goldenSectionSearchForBestPowerCap(
-//     PowAndPerfResult& firstResult,
-//     int& highLimit_uW,
-//     int& lowLimit_uW,
-//     TargetMetric metric,
-//     int& status,
-//     int childPID)
-// {
-//     int EPSILON = (highLimit_uW - lowLimit_uW)/ 100;
-//     std::cout << "EPSILON: " << EPSILON/1000000 << "\n";
-//     int a = lowLimit_uW;
-//     int b = highLimit_uW;
-//     float phi = (sqrt(5) - 1) / 2; // this is equal 0.618 and it is reverse of 1.618
-//     int leftCandidate = b - int(phi * (b - a));
-//     int rightCandidate = a + int(phi * (b - a));
-//     logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
-//     bool measureL = true;
-//     bool measureR = true;
-//     PowAndPerfResult tmp;
-//     while ((b - a) > EPSILON) {
-//         auto fL = measureL ? setCapAndMeasure(leftCandidate, cfg_.usTestPhasePeriod_) : tmp;
-//         std::cout << logCurrentResultLine(fL, firstResult, cfg_.k_);
-//         auto fR = measureR ? setCapAndMeasure(rightCandidate, cfg_.usTestPhasePeriod_) : tmp;
-//         std::cout << logCurrentResultLine(fR, firstResult, cfg_.k_);
-
-//         if (!fL.isRightBetter(fR, metric)) {
-//             // choose subrange [a, rightCandidate]
-//             b = rightCandidate;
-//             rightCandidate = leftCandidate;
-//             tmp = fL;
-//             measureR = false;
-//             measureL = true;
-//             leftCandidate = b - int(phi * (b - a));
-//         } else {
-//             // choose subrange [leftCandidate, b]
-//             a = leftCandidate;
-//             leftCandidate = rightCandidate;
-//             tmp = fR;
-//             measureR = true;
-//             measureL = false;
-//             rightCandidate = a + int(phi * (b - a));
-//         }
-//         logCurrentRangeGSS(a, leftCandidate, rightCandidate, b);
-//         waitpid(childPID, &status, WNOHANG);
-//         if (!status) break;
-//     }
-//     // when stop condition was met return the middle of the subrange found
-//     return (a + b) / 2;
-// }
 
 FinalPowerAndPerfResult Eco::runAppWithSearch(
     char* const* argv,
@@ -531,44 +327,35 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         }
         else  // parent process
         {
-            // const auto minmax = device_->getMinMaxLimitInWatts();
-            // int lowPowLimit_uW = minmax.first * 1000000;
-            // int highPowLimit_uW = minmax.second * 1000000;
             int status = 1;
             printHeader();
             if (cfg_.doWaitPhase_)
             {
                 waitTime = measureDuration([&, this] {
-                    waitPhase(status, childProcId);
+                    waitForTuningTrigger(status, childProcId);
                 });
             }
             //----------------------------------------------------------------------------
+            Algorithm algorithm;
+            if (searchType == SearchType::LINEAR_SEARCH)
+            {
+                algorithm = LinearSearchAlgorithm();
+            }
+            else
+            {
+                algorithm = GoldenSectionSearchAlgorithm();
+            }
+            //----------------------------------------------------------------------------
+            PowAndPerfResult referenceRun;
             while (status)
             {
-                PowAndPerfResult referenceRun = checkPowerAndPerformance(cfg_.referenceRunMultiplier_ * cfg_.usTestPhasePeriod_);
-                Algorithm algorithm;
                 testTime += measureDuration([&, this] {
-                    if (searchType == SearchType::LINEAR_SEARCH)
-                    {
-                        algorithm = LinearSearchAlgorithm();
-                    }
-                    else
-                    {
-                        algorithm = GoldenSectionSearchAlgorithm();
-                    }
+                    referenceRun = checkPowerAndPerformance(cfg_.referenceRunMultiplier_ * cfg_.usTestPhasePeriod_);
+                    logger_.logPowerLogLine(devStateGlobal_, referenceRun);
                     bestResultCapInMicroWatts = algorithm(device_, devStateGlobal_, trigger_, targerMetric, referenceRun, status, childProcId, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
-                    // bestCap = testPhase(highPowLimit_uW,
-                    //                     lowPowLimit_uW,
-                    //                     targerMetric,
-                    //                     searchType,
-                    //                     referenceResult,
-                    //                     status,
-                    //                     childProcId);
-                    // waitpid(childProcId, &status, WNOHANG);
                 });
-                execPhase(bestResultCapInMicroWatts, status, childProcId, referenceRun, algorithm, cfg_.repeatTuningPeriodInSec_ != 0);
-                dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
-                // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
+                execPhase(bestResultCapInMicroWatts, status, childProcId, referenceRun);
+                device_->restoreDefaultLimits();
             }
         }
     }
@@ -631,37 +418,6 @@ FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int
     return sum;
 }
 
-// void Eco::storeReferenceRun(FinalPowerAndPerfResult& ref) {
-//     if (fullAppRunResultsContainer_.size() == 0) {
-//         fullAppRunResultsContainer_.emplace_back(device_->getMinMaxLimitInWatts().second,
-//                                         ref.energy,
-//                                         ref.pkgPower,
-//                                         ref.pp0power,
-//                                         ref.pp1power,
-//                                         ref.dramPower,
-//                                         ref.time_,
-//                                         ref.inst,
-//                                         ref.cycl);
-//         std::cout << "Reference run saved.\n";
-//     } else {
-//         std::cout << "Reference run already exists!.\n";
-//     }
-// }
-
-void Eco::referenceRunWithoutCaps(char* const* argv) {
-    auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
-    fullAppRunResultsContainer_.emplace_back(dynamic_cast<IntelDevice*>(device_.get())->getDefaultCaps().defaultConstrPKG_->longPower, //devStateGlobal_.getPkgMaxPower() + 1, //this is temporary value for "default" powercap
-                                    avResult.energy,
-                                    avResult.pkgPower,
-                                    avResult.pp0power,
-                                    avResult.pp1power,
-                                    avResult.dramPower,
-                                    avResult.time_,
-                                    avResult.inst,
-                                    avResult.cycl);
-    std::cout << "Reference run saved.\n";
-}
-
 void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain dom) {
     // This is legacy method which requires prior referenceRunWithoutCaps() method call.
     // This method was used when there was a need for static
@@ -676,7 +432,7 @@ void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain do
     //     stream << "#[INFO] Running tests for domain " << dom << ".\n";
     //     const auto ref = fullAppRunResultsContainer_.front(); //TODO: remove the dependency on reference run
     //     stream << std::fixed << std::setprecision(3) << ref << "\n";
-    //     auto powerLimitsVec = generateVecOfPowerCaps(dom);
+    //     auto powerLimitsVec = prepareListOfPowerCapsInMicroWatts(dom);
     //     auto loopsToDo = powerLimitsVec.size();
     //     for (auto& currentLimit : powerLimitsVec) {
     //         std::cout << loopsToDo-- << " ";
@@ -783,7 +539,7 @@ void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
 }
 
 void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
-    PowerCapDomain dom = PowerCapDomain::PKG;
+    // PowerCapDomain dom = PowerCapDomain::PKG;
     std::vector<FinalPowerAndPerfResult> resultsVec;
     const auto&& warmup = runAppWithSampling(argv);
     stream << "# " << std::fixed << std::setprecision(3) << warmup << "\n";
@@ -800,10 +556,10 @@ void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
     //
     resultsVec.push_back(reference);
     stream << reference << "\n";
-    auto powerLimitsVec = generateVecOfPowerCaps(dom);
-    auto loopsToDo = powerLimitsVec.size();
+    auto powerLimitsVec = prepareListOfPowerCapsInMicroWatts(/*dom*/);
+    // auto loopsToDo = powerLimitsVec.size();
     for (auto& currentLimit : powerLimitsVec) {
-        std::cout << loopsToDo-- << " ";
+        // std::cout << loopsToDo-- << " ";
         device_->setPowerLimitInMicroWatts(currentLimit);
         auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
         auto k = getK();
@@ -832,7 +588,7 @@ void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
             break;
         }
     }
-    dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
+    // dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
     // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
     stream << "# PowerCap for: min(E): "
             << std::min_element(resultsVec.begin(),

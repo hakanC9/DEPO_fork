@@ -69,7 +69,9 @@ class CudaDevice : public Device
     double getCurrentPowerInWatts(std::optional<Domain> = std::nullopt) const override;
     unsigned long long int getPerfCounter() const;
     void triggerPowerApiSample() override {}; // empty method since, NVIDIA GPU does not need to explicit trigger API sampling
-
+    // void readAndStoreDefaultLimits() override;
+    void restoreDefaultLimits() override;
+    std::string getDeviceTypeString() const override { return "gpu"; };
 
 
   private:
@@ -78,6 +80,7 @@ class CudaDevice : public Device
     unsigned int deviceCount_ {0};
     int deviceID_;
     std::vector<nvmlDevice_t> deviceHandles_;
+    double defaultPowerLimitInWatts_;
 };
 
 
@@ -187,8 +190,7 @@ class GpuEco : public EcoApi
     std::shared_ptr<CudaDevice> gpu_;
     std::unique_ptr<DeviceStateAccumulator> deviceState_;
     unsigned minPowerLimit_, maxPowerLimit_;
-    double defaultPowerLimitInWatts_;
-    int deviceID_;
+    // int deviceID_;
     std::ofstream outPowerFile_;
     std::unique_ptr<BothStream> bout_;
     Logger logger_;

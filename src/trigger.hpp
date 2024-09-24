@@ -35,6 +35,10 @@ class Trigger
     Trigger(TriggerType tt) :
       type_(tt), preFilter_(100), filter_(100)
       {
+        if (tt == TriggerType::PERIODIC_TUNING_WITH_WAIT || tt == TriggerType::PERIODIC_IMMEDIATE_TUNING)
+        {
+          isTuningPeriodic_ = true;
+        }
         // std::cout << "[DEBUG] calling Trigger constructor\n";
       }
     ~Trigger() = default;
@@ -49,7 +53,7 @@ class Trigger
           return filter_.getCleanedRelativeError() < TRESHOLD;
         case TriggerType::SINGLE_IMMEDIATE_TUNING:
         case TriggerType::PERIODIC_IMMEDIATE_TUNING:
-          return true;
+          return hasDeviceReportedAnyComputeActivityThroughPerfCounter_;
         case TriggerType::NO_TUNING:
         default:
           return false;
@@ -70,9 +74,23 @@ class Trigger
       preFilter_.storeDataPoint(powerInWatts);
     }
 
+    void updateComputeActivityFlag(bool computeActivityOfDeviceCondition)
+    {
+      hasDeviceReportedAnyComputeActivityThroughPerfCounter_ =
+          hasDeviceReportedAnyComputeActivityThroughPerfCounter_ || computeActivityOfDeviceCondition;
+      // std::cout << "[DEBUG] updated flag to " << hasDeviceReportedAnyComputeActivityThroughPerfCounter_ << std::endl;
+    }
+
+    bool isTuningPeriodic() const
+    {
+      return isTuningPeriodic_;
+    }
+
   private:
     TriggerType type_;
     DataFilter filter_;
     DataFilter preFilter_;
     double TRESHOLD {0.03};
+    bool hasDeviceReportedAnyComputeActivityThroughPerfCounter_ {false};
+    bool isTuningPeriodic_ {false};
 };

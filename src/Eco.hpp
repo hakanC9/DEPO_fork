@@ -101,11 +101,11 @@ class Eco : public EcoApi
 
     void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
-    void referenceRunWithoutCaps(char* const*);
+    // void referenceRunWithoutCaps(char* const*);
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
     // void storeReferenceRun(FinalPowerAndPerfResult&);
 
-    Eco(std::shared_ptr<IntelDevice>, TriggerType);
+    Eco(std::shared_ptr<Device>, TriggerType);
     virtual ~Eco();
 
   protected:
@@ -126,24 +126,24 @@ class Eco : public EcoApi
 
     WatchdogStatus defaultWatchdog;
     // std::ofstream outPowerFile;
-    double defaultPowerLimitInWatts_; // PKG domain power limit
+    // double defaultPowerLimitInWatts_; // PKG domain power limit
 
     // void storeDataPointToFilters(double);
     // double getFilteredPower();
     void modifyWatchdog(WatchdogStatus);
     WatchdogStatus readWatchdog();
     // void logPowerToFile();
-    std::string generateUniqueResultDir();
-    std::vector<int> generateVecOfPowerCaps(Domain = PowerCapDomain::PKG);
+    // std::string generateUniqueResultDir();
+    std::vector<int> prepareListOfPowerCapsInMicroWatts(/*Domain = PowerCapDomain::PKG*/);
     void singleAppRunAndPowerSample(char* const*);
     FinalPowerAndPerfResult multipleAppRunAndPowerSample(char* const*, int);
     PowAndPerfResult checkPowerAndPerformance(int);
     // PowAndPerfResult setCapAndMeasure(int, int);
     // void justSample(int timeS);
     void reportResult(double = 0.0, double = 0.0);
-    void waitPhase(int&, int);
+    void waitForTuningTrigger(int&, int);
     // int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
-    void execPhase(int, int&, int, PowAndPerfResult&, Algorithm&, bool = false);
+    void execPhase(int, int&, int, PowAndPerfResult&);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
     // int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
@@ -283,6 +283,7 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
 
         while ((b - a) > EPSILON)
         {
+          logCurrentRangeGSS(a, leftCandidateInMicroiWatts/1000, rightCandidateInMicroWatts/1000, b);
           auto fL = tmp;
           if (measureL)
           {
@@ -329,7 +330,6 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
             measureL = false;
             rightCandidateInMicroWatts = a + int(PHI * (b - a));
           }
-          logCurrentRangeGSS(a, leftCandidateInMicroiWatts/1000, rightCandidateInMicroWatts/1000, b);
           waitpid(childProcID, &procStatus, WNOHANG);
           if (!procStatus) break;
         }

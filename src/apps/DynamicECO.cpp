@@ -185,10 +185,10 @@ int main (int argc, char *argv[])
     cleanArgv(argc, argv);
 
 
-    std::unique_ptr<EcoApi> eco;
+    std::shared_ptr<Device> device;
     if (gpuID.has_value())
     {
-        eco = std::make_unique<GpuEco>(gpuID.value());
+        device = std::make_shared<CudaDevice>(gpuID.value());
 
         int e1 = setenv("INJECTION_KERNEL_COUNT", "1", 1);
         std::string path = readPathInfo();
@@ -207,13 +207,16 @@ int main (int argc, char *argv[])
     }
     else
     {
-        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>(), TriggerType::SINGLE_TUNING_WITH_WAIT);
+        device = std::make_shared<IntelDevice>();
     }
+
+    std::unique_ptr<Eco> eco = std::make_unique<Eco>(device, TriggerType::PERIODIC_IMMEDIATE_TUNING);
     // std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
     std::stringstream ssout;
     ssout << "# ";
     for (int i=1; i<argc; i++) {
         ssout <<  argv[i] << " ";
+        std::cout <<  argv[i] << " ";
     }
     ssout << "\n";
 

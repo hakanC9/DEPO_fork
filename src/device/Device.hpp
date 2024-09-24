@@ -62,6 +62,9 @@ public:
     virtual void reset() = 0;
     virtual unsigned long long int getPerfCounter() const = 0;
     virtual double getCurrentPowerInWatts(std::optional<Domain>) const = 0;
+    // virtual void readAndStoreDefaultLimits() = 0;
+    virtual void restoreDefaultLimits() = 0;
+    virtual std::string getDeviceTypeString() const = 0;
     /*
       triggerPowerApiSample - used to trigger next sample from Power Management API
 
@@ -99,8 +102,11 @@ public:
       For Intel CPU it returns 0 as minimal value. In the future it might be fixed.
     */
     std::pair<unsigned, unsigned> getMinMaxLimitInWatts() const override;
-    void restoreDefaults();
-    RaplDefaults getDefaultCaps() const;
+    std::string getDeviceTypeString() const override { return "cpu"; };
+
+    void readAndStoreDefaultLimits();
+    void restoreDefaultLimits() override;
+    // RaplDefaults getDefaultCaps() const;
     AvailableRaplPowerDomains getAvailablePowerDomains();
     bool isDomainAvailable(Domain);
     double getNumInstructionsSinceReset() const;
@@ -111,7 +117,7 @@ private:
     void detectPackages();
     void detectPowerCapsAvailability();
     void prepareRaplDirsFromAvailableDomains();
-    void readAndStoreDefaultLimits();
+    // void readAndStoreDefaultLimits();
     void initPerformanceCounters();
     std::string mapCpuFamilyName(int model) const;
     void setLongTimeWindow(int); // might be useless

@@ -30,7 +30,7 @@ public:
     int powerSampleOn_ {1};
     int targetMetric_ {0}; // 0 - Energy by default, 1 - EDP, 2 - EDS
     int msTestPhasePeriod_ {1000};
-    int usTestPhasePeriod_ {1000 * 1000};
+    int usTestPhasePeriod_ {msTestPhasePeriod_ * 1000};
     int reducedPowerCapRange_ {0};
     int optimizationDelay_ {0}; // seconds
     int isPowerLogOn_ {1};

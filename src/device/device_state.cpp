@@ -79,13 +79,15 @@ double DeviceStateAccumulator::getEnergySinceReset() const
 
 PowAndPerfResult DeviceStateAccumulator::getCurrentPowerAndPerf(std::optional<std::reference_wrapper<Trigger>> trigger) const
 {
+    double perfCounterDelta = (double)(next_.kernelsCount_ - curr_.kernelsCount_);
     if (trigger.has_value())
     {
         trigger->get().appendPowerSampleToSmaFilter(next_.power_);
+        trigger->get().updateComputeActivityFlag(perfCounterDelta > 0.0);
     }
     double timeDeltaMilliSeconds = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
     return PowAndPerfResult(
-        (double)(next_.kernelsCount_ - curr_.kernelsCount_),
+        perfCounterDelta,
         timeDeltaMilliSeconds / 1000,
         device_->getPowerLimitInWatts(),
         next_.power_ * timeDeltaMilliSeconds / 1000, // Watts x seconds

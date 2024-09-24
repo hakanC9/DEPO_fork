@@ -121,6 +121,7 @@ CudaDevice::CudaDevice(int devID) :
     printf("Found %d device%s\n\n", deviceCount_, deviceCount_ != 1 ? "s" : "");
     initDeviceHandles();
     std::cout << "DEBUG device handles initialized succesfully" << std::endl;
+    defaultPowerLimitInWatts_ = this->getPowerLimitInWatts();
 }
 
 double CudaDevice::getPowerLimitInWatts() const
@@ -219,7 +220,11 @@ unsigned long long int CudaDevice::getPerfCounter() const
     return (unsigned long long)kernelsCountTmp;
 }
 
+void CudaDevice::restoreDefaultLimits()
+{
+    setPowerLimitInMicroWatts(1e6 * defaultPowerLimitInWatts_);
 
+}
 // GpuDeviceState::GpuDeviceState(std::shared_ptr<CudaDevice>& device) :
 //     absoluteStartTime_(std::chrono::high_resolution_clock::now()),
 //     timeOfLastReset_(std::chrono::high_resolution_clock::now()),
@@ -281,12 +286,11 @@ unsigned long long int CudaDevice::getPerfCounter() const
 // }
 
 
-GpuEco::GpuEco(int deviceID) : deviceID_(deviceID), logger_("gpu_"), trigger_(TriggerType::NO_TUNING)
+GpuEco::GpuEco(int deviceID) : logger_("gpu_"), trigger_(TriggerType::NO_TUNING)
 {
     gpu_ = std::make_shared<CudaDevice>(deviceID);
     deviceState_ = std::make_unique<DeviceStateAccumulator>(gpu_);
     std::tie(minPowerLimit_, maxPowerLimit_) = gpu_->getMinMaxLimitInWatts();
-    defaultPowerLimitInWatts_ = gpu_->getPowerLimitInWatts();
     gpu_->reset();
     // const auto dir = generateUniqueDir();
     // outPowerFileName_ = dir + "power_log.csv";
@@ -297,7 +301,7 @@ GpuEco::GpuEco(int deviceID) : deviceID_(deviceID), logger_("gpu_"), trigger_(Tr
 
 GpuEco::~GpuEco()
 {
-    gpu_->setPowerLimitInMicroWatts(1e6 * defaultPowerLimitInWatts_);
+    gpu_->restoreDefaultLimits();
     // outPowerFile_.close();
 }
 
@@ -497,7 +501,7 @@ FinalPowerAndPerfResult GpuEco::runAppWithSearch(
                 bestResultCapInMicroWatts = algorithm(gpu_, *deviceState_, trigger_, metric, referenceRun, status, childProcId, cfg_.msPause_, cfg_.msTestPhasePeriod_, logger_);
             });
             executeWithPowercap(status, bestResultCapInMicroWatts, cfg_.msPause_, childProcId, referenceRun);
-            gpu_->setPowerLimitInMicroWatts(1e6 * defaultPowerLimitInWatts_);
+            gpu_->restoreDefaultLimits();
             wait(&status);
         }
     }

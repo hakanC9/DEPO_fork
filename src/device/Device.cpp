@@ -363,7 +363,7 @@ void IntelDevice::readAndStoreDefaultLimits()
     }
 }
 
-void IntelDevice::restoreDefaults ()
+void IntelDevice::restoreDefaultLimits ()
 {
     currentPowerLimitInWatts_ = totalPackages_ * raplDefaultCaps_.defaultConstrPKG_->longPower / 1e6;
     //assume that both PKGs has the same limits
@@ -442,10 +442,10 @@ void IntelDevice::setLongTimeWindow(int longTimeWindow) {
     }
 }
 
-RaplDefaults IntelDevice::getDefaultCaps() const
-{
-	return raplDefaultCaps_;
-}
+// RaplDefaults IntelDevice::getDefaultCaps() const
+// {
+// 	return raplDefaultCaps_;
+// }
 
 void IntelDevice::initPerformanceCounters()
 {

@@ -128,7 +128,7 @@ class Logger
 
     std::string generateUniqueDir(std::string prefix = "")
     {
-        std::string dir = prefix + "experiment_" +
+        std::string dir = prefix + "_experiment_" +
             std::to_string(
                 std::chrono::system_clock::to_time_t(
                       std::chrono::high_resolution_clock::now()));
