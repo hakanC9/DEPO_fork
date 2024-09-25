@@ -112,6 +112,8 @@ class Eco {
 	-trigger_ : Trigger
 	-defaultWatchdog : WatchdogStatus
 	-readWatchdog() : WatchdogStatus
+	+getK() : double
+	+getNumIterations() : int
 	-adjustHighPowLimit(PowAndPerfResult, int &) : int&
 	-device_ : std::shared_ptr<Device>
 	+getDeviceName() : std::string {query}
@@ -128,26 +130,8 @@ class Eco {
 	-singleAppRunAndPowerSample(char* const*) : void
 	+staticEnergyProfiler(char* const* argv, int argc) : void
 	-waitForTuningTrigger(int &, int) : void
-}
-
-
-abstract class EcoApi {
-	+EcoApi()
-	+~EcoApi()
-	+{abstract} runAppWithSampling(char* const*, int) : FinalPowerAndPerfResult
-	+{abstract} runAppWithSearch(char* const*, TargetMetric, SearchType, int) : FinalPowerAndPerfResult
 	#cfg_ : ParamsConfig
-	+getK() : double
-	+getNumIterations() : int
-	+{abstract} getDeviceName() : std::string {query}
-	+getPowerLogFileName() : std::string {query}
-	+getResultFileName() : std::string {query}
-	#outPowerFileName_ : std::string
-	#outResultFileName_ : std::string
-	+{abstract} plotPowerLog(std::optional<FinalPowerAndPerfResult>) : void
-	+setCustomK(double k) : void
 }
-
 
 class GoldenSectionSearchAlgorithm {
 	' +operator()(std::shared_ptr<Device> device, DeviceStateAccumulator& deviceState, Trigger& trigger, TargetMetric metric, const PowAndPerfResult& reference, int& procStatus, int childProcID, int powerSamplingPeriodInMilliSeconds, int tuningTimeWindowInMilliSeconds, Logger& logger) : unsigned {query}
@@ -579,8 +563,6 @@ interface NVML {
 .Device <|-- .IntelDevice
 
 
-.EcoApi <|-- .Eco
-
 
 .SearchAlgorithm <|-- .GoldenSectionSearchAlgorithm
 
@@ -617,7 +599,7 @@ interface NVML {
 ' .Eco *-- .WatchdogStatus
 
 
-.EcoApi *-- .ParamsConfig
+.Eco *-- .ParamsConfig
 
 
 ' .EnergyTimeResult *-- .TimeResult

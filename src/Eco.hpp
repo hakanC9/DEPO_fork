@@ -52,27 +52,6 @@ void validateExecStatus(int status) {
     }
 }
 
-class EcoApi
-{
-  public:
-    virtual FinalPowerAndPerfResult runAppWithSampling(char* const*, int) = 0;
-    virtual FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int) = 0;
-    virtual void plotPowerLog(std::optional<FinalPowerAndPerfResult>) = 0;
-    virtual std::string getDeviceName() const = 0;
-
-    double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
-    void setCustomK(double k) { cfg_.k_ = k; } // temporary setter until Eco is reorganised
-    int getNumIterations() { return cfg_.numIterations_; }
-    virtual std::string getResultFileName() const { return outResultFileName_; }
-    std::string getPowerLogFileName() const { return outPowerFileName_; }
-    EcoApi() = default;
-    virtual ~EcoApi() = default;
-  protected:
-    ParamsConfig cfg_; // stores defaults values of params or reads it from config.yaml
-    std::string outResultFileName_;
-    std::string outPowerFileName_;
-};
-
 using Algorithm = std::function<unsigned(
   std::shared_ptr<Device>,
   DeviceStateAccumulator&,
@@ -85,17 +64,17 @@ using Algorithm = std::function<unsigned(
   int,
   Logger&)>;
 
-class Eco : public EcoApi
+class Eco
 {
   public:
-    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1) override;
+    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1);
     FinalPowerAndPerfResult runAppWithSearch(
       char* const*,
       TargetMetric,
       SearchType,
-      int = 1) override;
-    void plotPowerLog(std::optional<FinalPowerAndPerfResult>) override;
-    std::string getDeviceName() const override { return device_->getName(); }
+      int = 1);
+    void plotPowerLog(std::optional<FinalPowerAndPerfResult>);
+    std::string getDeviceName() const { return device_->getName(); }
 
     void staticEnergyProfiler(char* const* argv, int argc);
 
@@ -104,11 +83,16 @@ class Eco : public EcoApi
     Eco() = delete;
     Eco(std::shared_ptr<Device>);
     virtual ~Eco();
-    std::string getResultFileName() const override { return logger_.getResultFileName(); }
+    std::string getResultFileName() const { return logger_.getResultFileName(); }
     void logToResultFile(std::stringstream& ss) { logger_.logToResultFile(ss); }
+
+    double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
+    void setCustomK(double k) { cfg_.k_ = k; } // temporary setter until Eco is reorganised
+    int getNumIterations() { return cfg_.numIterations_; }
 
   protected:
   private:
+    ParamsConfig cfg_; // stores defaults values of params or reads it from config.yaml
     Trigger trigger_;
     std::shared_ptr<Device> device_;
     CrossDomainQuantity idleAvPow_;
@@ -129,6 +113,7 @@ class Eco : public EcoApi
     void execPhase(int, int&, int, PowAndPerfResult&);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
+
 };
 
 #include <sys/wait.h>
@@ -192,7 +177,7 @@ class LinearSearchAlgorithm : public SearchAlgorithm
       int childProcID,
       int powerSamplingPeriodInMilliSeconds,
       int tuningTimeWindowInMilliSeconds,
-      Logger& logger) const override
+      Logger& logger) const
     {
       const auto [minLimitInWatts, maxLimitInWatts] = device->getMinMaxLimitInWatts();
       const auto minLimitInMictoWatts = minLimitInWatts * 1e6;
@@ -246,7 +231,7 @@ class GoldenSectionSearchAlgorithm : public SearchAlgorithm
       int childProcID,
       int powerSamplingPeriodInMilliSeconds,
       int tuningTimeWindowInMilliSeconds,
-      Logger& logger) const override
+      Logger& logger) const
     {
         const auto [minLimitInWatts, maxLimitInWatts] = device->getMinMaxLimitInWatts();
         int EPSILON = (maxLimitInWatts - minLimitInWatts) * 1e6 / 25;
