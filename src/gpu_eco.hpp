@@ -150,7 +150,6 @@ class GpuEco : public EcoApi
     GpuEco(int deviceID = 0);
     virtual ~GpuEco();
 
-    void idleSample(int sleepPeriodInMs) override;
     FinalPowerAndPerfResult runAppWithSampling(char* const* argv, int argc) override;
     FinalPowerAndPerfResult runAppWithSearch(
         char* const* argv,

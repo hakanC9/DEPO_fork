@@ -74,7 +74,7 @@ int main (int argc, char *argv[]) {
 	watchdog.close();
 
 
-    Eco eco(std::make_shared<IntelDevice>(), TriggerType::SINGLE_TUNING_WITH_WAIT);
+    Eco eco(std::make_shared<IntelDevice>());
     std::ofstream outResultFile (eco.getResultFileName(), std::ios::out | std::ios::trunc);
 
     BothStream bout(outResultFile);
@@ -115,7 +115,7 @@ int main (int argc, char *argv[]) {
             eco.setCustomK(k);
             ResultsContainer results(numIterations);
             for (int i = 0; i < numIterations; i++) {
-                eco.idleSample(10); // separate test runs with 10 seconds break
+                // eco.idleSample(10); // separate test runs with 10 seconds break
                 results.storeOneResult(i, eco.runAppWithSearch(argv, metric, searchType));
             }
             tmp << metric << printResult(resultsDef, results, k).str() << "\n\n";

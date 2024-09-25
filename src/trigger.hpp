@@ -17,6 +17,7 @@
 #pragma once
 
 #include "helpers/data_filter.hpp"
+#include "helpers/params_config.hpp"
 
 enum class TriggerType
 {
@@ -32,12 +33,17 @@ class Trigger
 {
   public:
     Trigger() = delete;
-    Trigger(TriggerType tt) :
-      type_(tt), preFilter_(100), filter_(100)
+    Trigger(ParamsConfig cfg) :
+      preFilter_(100), filter_(100)
       {
-        if (tt == TriggerType::PERIODIC_TUNING_WITH_WAIT || tt == TriggerType::PERIODIC_IMMEDIATE_TUNING)
+        if (cfg.repeatTuningPeriodInSec_ > 0)
         {
+          type_ = cfg.doWaitPhase_ ? TriggerType::PERIODIC_TUNING_WITH_WAIT : TriggerType::PERIODIC_IMMEDIATE_TUNING;
           isTuningPeriodic_ = true;
+        }
+        else
+        {
+          type_ = cfg.doWaitPhase_ ? TriggerType::SINGLE_TUNING_WITH_WAIT : TriggerType::SINGLE_IMMEDIATE_TUNING;
         }
         // std::cout << "[DEBUG] calling Trigger constructor\n";
       }

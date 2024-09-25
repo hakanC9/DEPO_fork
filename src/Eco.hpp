@@ -55,7 +55,6 @@ void validateExecStatus(int status) {
 class EcoApi
 {
   public:
-    virtual void idleSample(int) = 0; // TODO: remove here and in Eco and in GpuEco
     virtual FinalPowerAndPerfResult runAppWithSampling(char* const*, int) = 0;
     virtual FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int) = 0;
     virtual void plotPowerLog(std::optional<FinalPowerAndPerfResult>) = 0;
@@ -89,7 +88,6 @@ using Algorithm = std::function<unsigned(
 class Eco : public EcoApi
 {
   public:
-    void idleSample(int idleTimeS) override {}; // TODO:remove
     FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1) override;
     FinalPowerAndPerfResult runAppWithSearch(
       char* const*,
@@ -101,53 +99,34 @@ class Eco : public EcoApi
 
     void staticEnergyProfiler(char* const* argv, BothStream& stream);
 
-    // void referenceRunWithoutCaps(char* const*);
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
-    // void storeReferenceRun(FinalPowerAndPerfResult&);
 
-    Eco(std::shared_ptr<Device>, TriggerType);
+    Eco() = delete;
+    Eco(std::shared_ptr<Device>);
     virtual ~Eco();
 
   protected:
   private:
     Trigger trigger_;
-    // std::map<FilterType, DataFilter> smaFilters_;
-    // FilterType activeFilter_ {FilterType::SMA100};
-    // DataFilter filter2order_;
     std::shared_ptr<Device> device_;
     CrossDomainQuantity idleAvPow_;
-    // double pprevSMA_ {0.0}, prevSMA_ {0.0};
-    // bool optimizationTrigger_ {false};
 
     DeviceStateAccumulator devStateGlobal_;
-    // DeviceStateAccumulator devStateLocal_;
     std::vector<FinalPowerAndPerfResult> fullAppRunResultsContainer_;
     Logger logger_;
 
     WatchdogStatus defaultWatchdog;
-    // std::ofstream outPowerFile;
-    // double defaultPowerLimitInWatts_; // PKG domain power limit
-
-    // void storeDataPointToFilters(double);
-    // double getFilteredPower();
     void modifyWatchdog(WatchdogStatus);
     WatchdogStatus readWatchdog();
-    // void logPowerToFile();
-    // std::string generateUniqueResultDir();
     std::vector<int> prepareListOfPowerCapsInMicroWatts(/*Domain = PowerCapDomain::PKG*/);
     void singleAppRunAndPowerSample(char* const*);
     FinalPowerAndPerfResult multipleAppRunAndPowerSample(char* const*, int);
     PowAndPerfResult checkPowerAndPerformance(int);
-    // PowAndPerfResult setCapAndMeasure(int, int);
-    // void justSample(int timeS);
     void reportResult(double = 0.0, double = 0.0);
     void waitForTuningTrigger(int&, int);
-    // int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
     void execPhase(int, int&, int, PowAndPerfResult&);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
-    // int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
-    // int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
 };
 
 #include <sys/wait.h>

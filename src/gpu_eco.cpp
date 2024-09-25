@@ -286,7 +286,7 @@ void CudaDevice::restoreDefaultLimits()
 // }
 
 
-GpuEco::GpuEco(int deviceID) : logger_("gpu_"), trigger_(TriggerType::NO_TUNING)
+GpuEco::GpuEco(int deviceID) : logger_("gpu_"), trigger_(cfg_)
 {
     gpu_ = std::make_shared<CudaDevice>(deviceID);
     deviceState_ = std::make_unique<DeviceStateAccumulator>(gpu_);
@@ -305,14 +305,6 @@ GpuEco::~GpuEco()
     // outPowerFile_.close();
 }
 
-void GpuEco::idleSample(int sleepPeriodInMs)
-{
-    usleep(sleepPeriodInMs * 1000);
-    deviceState_->sample();
-    auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(trigger_);
-    // *bout_ << logCurrentGpuResultLine(deviceState_->getTimeSinceObjectCreation(), tmpResult, tmpResult);
-    logger_.logPowerLogLine(*deviceState_, tmpResult);
-    }
 
 FinalPowerAndPerfResult GpuEco::runAppWithSampling(char* const* argv, int argc)
 {
@@ -339,7 +331,10 @@ FinalPowerAndPerfResult GpuEco::runAppWithSampling(char* const* argv, int argc)
         {
             while(status)
             {
-                idleSample(cfg_.msPause_);
+                usleep(cfg_.msPause_ * 1000);
+                deviceState_->sample();
+                auto&& tmpResult = deviceState_->getCurrentPowerAndPerf(trigger_);
+                logger_.logPowerLogLine(*deviceState_, tmpResult);
                 waitpid(childProcId, &status, WNOHANG);
             }
             wait(&status);

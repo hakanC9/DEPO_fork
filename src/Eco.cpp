@@ -51,8 +51,8 @@ void monitor_trigger_file() {
 
 static constexpr char FLUSH_AND_RETURN[] = "\r                                                                                     \r";
 
-Eco::Eco(std::shared_ptr<Device> d, TriggerType tt) :
-    device_(d), devStateGlobal_(d), trigger_(tt), logger_(d->getDeviceTypeString())
+Eco::Eco(std::shared_ptr<Device> d) :
+    device_(d), devStateGlobal_(d), trigger_(cfg_), logger_(d->getDeviceTypeString())
 {
     defaultWatchdog = readWatchdog();
     if (defaultWatchdog == WatchdogStatus::ENABLED)
@@ -329,12 +329,9 @@ FinalPowerAndPerfResult Eco::runAppWithSearch(
         {
             int status = 1;
             printHeader();
-            if (cfg_.doWaitPhase_)
-            {
-                waitTime = measureDuration([&, this] {
-                    waitForTuningTrigger(status, childProcId);
-                });
-            }
+            waitTime = measureDuration([&, this] {
+                waitForTuningTrigger(status, childProcId);
+            });
             //----------------------------------------------------------------------------
             Algorithm algorithm;
             if (searchType == SearchType::LINEAR_SEARCH)

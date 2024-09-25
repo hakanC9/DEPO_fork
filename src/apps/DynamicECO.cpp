@@ -210,7 +210,7 @@ int main (int argc, char *argv[])
         device = std::make_shared<IntelDevice>();
     }
 
-    std::unique_ptr<Eco> eco = std::make_unique<Eco>(device, TriggerType::PERIODIC_IMMEDIATE_TUNING);
+    std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
     // std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
     std::stringstream ssout;
     ssout << "# ";
