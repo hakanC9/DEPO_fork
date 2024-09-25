@@ -119,11 +119,11 @@ The parameters in the `config.yaml` file are documented in comments.
 
 ## Available search modes in DEPO
 In DEPO there are several optimization modes available:
-1. Just power sampling whie application is executed, available when `--no-tuning` parameter is passed.
-2. Single immediate tuning, which launches the Tuing Phase as soon as the optimized device activity is detected, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 0` and `doWaitPhase: 0`.
-3. Single tuning with wait, which launches Tuing Phase after SMA based Power filter detects stable average power consumption, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 0` and `doWaitPhase: 1`.
-4. Periodic immediate tuning, which launches the Tuning Phase as soon as the optimized device activity is detected and repeats the tuning phase after a period defined in seconds with `repeatTuningPeriodInSec: 30` (for 30s execution with selected power cap before next Tuning Phase). Assuming `doWaitPhase: 0`.
-5. Periodic tuning with wait, which adds Wait Phase before first Tuning Phase, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 30` (for 30s period before next Tuing Phase) and `doWaitPhase: 1`.
+1. **Just power sampling**, which launches the application and monitors and reports power and energy consumption when finished, available when `--no-tuning` parameter is passed.
+2. **Single immediate tuning**, which launches the Tuing Phase as soon as the optimized device activity is detected, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 0` and `doWaitPhase: 0`.
+3. **Single tuning with wait**, which launches Tuing Phase after SMA based Power filter detects stable average power consumption, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 0` and `doWaitPhase: 1`.
+4. **Periodic immediate tuning**, which launches the Tuning Phase as soon as the optimized device activity is detected and repeats the tuning phase after a period defined in seconds with `repeatTuningPeriodInSec: 30` (for 30s execution with selected power cap before next Tuning Phase). Assuming `doWaitPhase: 0`.
+5. **Periodic tuning with wait**, which adds Wait Phase before first Tuning Phase, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 30` (for 30s period before next Tuing Phase) and `doWaitPhase: 1`.
 
 ## Experimental asynchronous Tuning in DEPO
 
@@ -197,6 +197,7 @@ If you find this code usefull please cite any of our papers which contributed to
         }
 
 
+# Some notes to be expanded in future
 
 https://developer.nvidia.com/cuda-downloads
 
