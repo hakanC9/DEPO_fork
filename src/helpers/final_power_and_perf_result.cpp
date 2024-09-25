@@ -71,6 +71,8 @@ FinalPowerAndPerfResult& operator+=(FinalPowerAndPerfResult& left, const FinalPo
     left.relativeDeltaE += right.relativeDeltaE;
     left.relativeDeltaT += right.relativeDeltaT;
     left.mPlus += right.mPlus;
+
+    left.enerTimeProd = left.energy * left.time_.getExecTime();
     return left;
 }
 
@@ -93,6 +95,9 @@ FinalPowerAndPerfResult& operator/=(FinalPowerAndPerfResult& left, const unsigne
     left.relativeDeltaE /= right;
     left.relativeDeltaT /= right;
     left.mPlus /= right;
+
+    left.enerTimeProd = left.energy * left.time_.getExecTime();
+
     return left;
 }
 

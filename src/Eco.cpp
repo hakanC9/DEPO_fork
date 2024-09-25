@@ -497,7 +497,7 @@ void Eco::modifyWatchdog(WatchdogStatus status) {
 }
 
 void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
-    logger_.flushAndClose();
+    logger_.flush();
     const auto f = logger_.getPowerFileName();
     // std::string imgFileName = outPowerFileName_;
     std::cout << "Processing " << f << " file...\n";
@@ -535,10 +535,12 @@ void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
                     });
 }
 
-void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
+void Eco::staticEnergyProfiler(char* const* argv)
+{
     // PowerCapDomain dom = PowerCapDomain::PKG;
     std::vector<FinalPowerAndPerfResult> resultsVec;
     const auto&& warmup = runAppWithSampling(argv);
+    std::stringstream stream;
     stream << "# " << std::fixed << std::setprecision(3) << warmup << "\n";
     stream << "# warmup done #\n";
     //
@@ -602,4 +604,5 @@ void Eco::staticEnergyProfiler(char* const* argv, BothStream& stream) {
                                 resultsVec.end(),
                                 CompareFinalResultsForMplus())->powercap
             << " W.\n";
+    logger_.logToResultFile(stream);
 }

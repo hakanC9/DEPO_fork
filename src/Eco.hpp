@@ -63,7 +63,7 @@ class EcoApi
     double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
     void setCustomK(double k) { cfg_.k_ = k; } // temporary setter until Eco is reorganised
     int getNumIterations() { return cfg_.numIterations_; }
-    std::string getResultFileName() const { return outResultFileName_; }
+    virtual std::string getResultFileName() const { return outResultFileName_; }
     std::string getPowerLogFileName() const { return outPowerFileName_; }
     EcoApi() = default;
     virtual ~EcoApi() = default;
@@ -97,13 +97,14 @@ class Eco : public EcoApi
     void plotPowerLog(std::optional<FinalPowerAndPerfResult>) override;
     std::string getDeviceName() const override { return device_->getName(); }
 
-    void staticEnergyProfiler(char* const* argv, BothStream& stream);
+    void staticEnergyProfiler(char* const* argv);
 
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
 
     Eco() = delete;
     Eco(std::shared_ptr<Device>);
     virtual ~Eco();
+    std::string getResultFileName() const override { return logger_.getResultFileName(); }
 
   protected:
   private:

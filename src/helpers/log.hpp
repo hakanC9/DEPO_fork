@@ -104,27 +104,42 @@ class Logger
         resultFileName_ = dir + "result.csv";
         powerFile_.open(powerFileName_, std::ios::out | std::ios::trunc);
         resultFile_.open(resultFileName_, std::ios::out | std::ios::trunc);
-        bout_ = std::make_unique<BothStream>(powerFile_);
+        power_bout_ = std::make_unique<BothStream>(powerFile_);
+        result_bout_ = std::make_unique<BothStream>(resultFile_);
     }
     void logPowerLogLine(DeviceStateAccumulator& deviceState, PowAndPerfResult current, const std::optional<PowAndPerfResult> reference = std::nullopt)
     {
-        *bout_  << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), current, reference);
+        *power_bout_  << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), current, reference);
+    }
+    void logToResultFile(std::stringstream& ss)
+    {
+        *result_bout_ << ss.str();
     }
     std::string getPowerFileName() const
     {
         return powerFileName_;
     }
-    void flushAndClose() // might be useless
+    void flush() // might be useless
     {
-        bout_->flush();
+        power_bout_->flush();
+        result_bout_->flush();
+    }
+    std::string getResultFileName() const
+    {
+        return resultFileName_;
+    }
+    ~Logger()
+    {
         powerFile_.close();
+        resultFile_.close();
     }
   private:
     std::string powerFileName_;
     std::ofstream powerFile_;
     std::string resultFileName_;
     std::ofstream resultFile_;
-    std::unique_ptr<BothStream> bout_;
+    std::unique_ptr<BothStream> power_bout_;
+    std::unique_ptr<BothStream> result_bout_;
 
     std::string generateUniqueDir(std::string prefix = "")
     {

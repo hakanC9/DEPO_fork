@@ -522,7 +522,7 @@ void GpuEco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results)
 {
     // bout_->flush();
     // outPowerFile_.close();
-    logger_.flushAndClose();
+    logger_.flush();
     const auto f = logger_.getPowerFileName();
     // std::cout << "Processing " << outPowerFileName_ << " file...\n";
     std::cout << "Processing " << f << " file...\n";
