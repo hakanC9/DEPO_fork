@@ -476,11 +476,11 @@ void PlotBuilder::plotEPet(std::string name) {
     *gp_ << "eds1(x) = -b1/k1 * x + b1\n";
     *gp_ << "eds2(x) = -b2/k2 * x + b2\n";
     *gp_ << "eds3(x) = -b3/k3 * x + b3\n";
-    *gp_ << "x_max = 3.5\n";
+    *gp_ << "x_max = 2.4\n";
     initPlot(800, 800);
     *gp_ << "first(x) = ($0 > 0 ? base : base = x)\n";
-    *gp_ << "set yrange [0:1.5]\n";
-    *gp_ << "set xrange [0.5:x_max]\n";
+    *gp_ << "set yrange [0:1.4]\n";
+    *gp_ << "set xrange [0.8:x_max]\n";
     *gp_ << "set key vert\n";
     *gp_ << "set xlabel \"Normalized execution time [-]\" font \",25\"\n"
         << "set ylabel \"Normalized energy consumption [-]\" font \",25\" offset 2,0\n";
