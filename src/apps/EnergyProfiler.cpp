@@ -15,7 +15,7 @@
 */
 
 #include "../Eco.hpp"
-#include "../gpu_eco.hpp"
+#include "../cuda_device.hpp"
 #include "../plot_builder.hpp"
 
 int main (int argc, char *argv[]) {

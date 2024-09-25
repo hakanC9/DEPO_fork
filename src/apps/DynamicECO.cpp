@@ -15,7 +15,7 @@
 */
 
 #include "../Eco.hpp"
-#include "../gpu_eco.hpp"
+#include "../cuda_device.hpp"
 
 #include "../helpers/results_container.hpp"
 #include <boost/program_options.hpp>

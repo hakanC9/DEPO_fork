@@ -12,8 +12,8 @@ add_library(
     eco
     src/Eco.hpp
     src/Eco.cpp
-    src/gpu_eco.hpp
-    src/gpu_eco.cpp
+    src/cuda_device.hpp
+    src/cuda_device.cpp
     src/power_if/Rapl.hpp
     src/power_if/Rapl.cpp
     src/device/Device.hpp
