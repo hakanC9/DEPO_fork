@@ -142,6 +142,9 @@ If one wish to add support for other CPU vendors, other GPU vendors or other com
 The new HW support may be added by preparing a `NewDevice` class inherited from the `Device` class, which would implement the interface required for using the `Device` by `Eco` class.
 Next step would be adding the `NewDevice` option in the DEPO application source file, i.e., `src/apps/DynamicECO.cpp` or writing own DEPO program with just the `NewDevice` class.
 
+### Current classes and dependencies diagram
+![DEPO class diagram](src/depo_class_diagram.png)
+
 # Related works
 If you find this code usefull please cite any of our papers which contributed to this codebase:
 
