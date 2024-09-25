@@ -42,19 +42,6 @@ int main (int argc, char *argv[]) {
         }
     }
 
-    // std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
-
-    // BothStream bout(outResultFile);
-    // bout << "# ";
-    // for (int i=1; i<argc; i++) {
-    //     bout << argv[i] << " ";
-    // }
-    // bout << "\n";
-    // bout << "#Pow.cap\tEnerg\tAv.P.PK"/*\tAv.P.P0\tAv.P.P1\tAv.P.DR*/<<"\ttime\tExt"
-    //      << "\tdE\tdt\t%dE\t%dt"/*\tdE/dt\t%dE/%dt\tinstr\tcycl\tins/s\tcyc/s*/<<"\tP/(cycl/s)\n";
-    // bout << "#[W]\t[J]\t[W]"/*\t[W]\t[W]\t[W]*/ << "\t[s]"
-    //      << "\t[Js]\t[J]\t[s]\t[%J]\t[%s]"/*\t[J/s]\t[-]\t[x1M]\t[x1M]\t[x1M/s]\t[x1M/s]\t*/ <<"[(cycl)/J]\t[(cycl/s)^2/W)]\n";
-
     std::shared_ptr<Device> device;
     if(!isGpu)
     {
@@ -66,10 +53,8 @@ int main (int argc, char *argv[]) {
     }
     std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
 
-    eco->staticEnergyProfiler(argv);
+    eco->staticEnergyProfiler(argv, argc);
 
-    // bout.flush();
-    // outResultFile.close();
     eco->plotPowerLog(std::nullopt);
 
     // Plot result file automatically

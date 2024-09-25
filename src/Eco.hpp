@@ -97,7 +97,7 @@ class Eco : public EcoApi
     void plotPowerLog(std::optional<FinalPowerAndPerfResult>) override;
     std::string getDeviceName() const override { return device_->getName(); }
 
-    void staticEnergyProfiler(char* const* argv);
+    void staticEnergyProfiler(char* const* argv, int argc);
 
     void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
 
@@ -105,6 +105,7 @@ class Eco : public EcoApi
     Eco(std::shared_ptr<Device>);
     virtual ~Eco();
     std::string getResultFileName() const override { return logger_.getResultFileName(); }
+    void logToResultFile(std::stringstream& ss) { logger_.logToResultFile(ss); }
 
   protected:
   private:

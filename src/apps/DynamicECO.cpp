@@ -211,7 +211,6 @@ int main (int argc, char *argv[])
     }
 
     std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
-    // std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
     std::stringstream ssout;
     ssout << "# ";
     for (int i=1; i<argc; i++) {
@@ -233,8 +232,7 @@ int main (int argc, char *argv[])
          << "#Energy[J]\ttime[s]\tPower[W]\n"
          << result.energy << "\t" << result.time_.totalTime_ << "\t" << result.pkgPower <<"\n";
 
-    // outResultFile.close();
-    std::cout << ssout.str();
+    eco->logToResultFile(ssout);
     eco->plotPowerLog(result);
 
     if (gpuID.has_value())

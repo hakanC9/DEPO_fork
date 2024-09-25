@@ -535,15 +535,25 @@ void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
                     });
 }
 
-void Eco::staticEnergyProfiler(char* const* argv)
+void Eco::staticEnergyProfiler(char* const* argv, int argc)
 {
     // PowerCapDomain dom = PowerCapDomain::PKG;
     std::vector<FinalPowerAndPerfResult> resultsVec;
     const auto&& warmup = runAppWithSampling(argv);
     std::stringstream stream;
+    stream << "# examined application: ";
+    for (int i=1; i<argc; i++) {
+        stream << argv[i] << " ";
+    }
+    stream << "\n";
+    stream << "# Pow.cap\tEnerg\tAv.P.PK"/*\tAv.P.P0\tAv.P.P1\tAv.P.DR*/<<"\ttime\tExt"
+         << "\tdE\tdt\t%dE\t%dt"/*\tdE/dt\t%dE/%dt\tinstr\tcycl\tins/s\tcyc/s*/<<"\tP/(cycl/s)\n";
+    stream << "# [W]\t[J]\t[W]"/*\t[W]\t[W]\t[W]*/ << "\t[s]"
+         << "\t[Js]\t[J]\t[s]\t[%J]\t[%s]"/*\t[J/s]\t[-]\t[x1M]\t[x1M]\t[x1M/s]\t[x1M/s]\t*/ <<"[(cycl)/J]\t[(cycl/s)^2/W)]\n";
+
     stream << "# " << std::fixed << std::setprecision(3) << warmup << "\n";
     stream << "# warmup done #\n";
-    //
+
     FinalPowerAndPerfResult reference;
     for(auto i = 0; i < cfg_.numIterations_; i++)
     {
