@@ -1,5 +1,5 @@
 /*
-   Copyright 2022, Adam Krzywaniak.
+   Copyright 2022-2024, Adam Krzywaniak.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -53,4 +53,27 @@ struct PowAndPerfResult {
     double averageMemoryPowerInWatts_ {0.01};
     double filteredPowerOfLimitedDomainInWatts_ {0.01}; // assume that either Core or Memory is limited
     double myPlusMetric_ {1.0};
+
+    friend PowAndPerfResult& operator+=(PowAndPerfResult& left, const PowAndPerfResult& right)
+    {
+        left.instructionsCount_ += right.instructionsCount_;
+        left.periodInSeconds_ += right.periodInSeconds_;
+        left.energyInJoules_ += right.energyInJoules_;
+        left.averageCorePowerInWatts_ = left.energyInJoules_ / left.periodInSeconds_;
+        // IMPORTANT:
+        // Be aware that this operator is implemented for special use case so the assignment
+        // of the latest powercap instead of accumulation of their values is intentional.
+        left.appliedPowerCapInWatts_ = right.appliedPowerCapInWatts_;
+        // INFO:
+        // implementing below parameters handling only for the compatibility, but for now
+        // it is expected that only above (instructions, time, energy and average power)
+        // will be informative enough when accumulating several PowAndPerfResults
+        left.filteredPowerOfLimitedDomainInWatts_ += right.filteredPowerOfLimitedDomainInWatts_;
+        left.filteredPowerOfLimitedDomainInWatts_ /= 2;
+        left.averageMemoryPowerInWatts_ += right.averageMemoryPowerInWatts_;
+        left.averageMemoryPowerInWatts_ /= 2;
+
+        return left;
+    }
+
 };

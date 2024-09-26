@@ -15,7 +15,7 @@
 */
 
 #include "../Eco.hpp"
-#include "../gpu_eco.hpp"
+#include "../cuda_device.hpp"
 
 #include "../helpers/results_container.hpp"
 #include <boost/program_options.hpp>
@@ -28,43 +28,51 @@ parseArgs(po::variables_map& map)
 {
     auto search = SearchType::LINEAR_SEARCH;
     auto metric = TargetMetric::MIN_E;
-    if (map.count("gss"))
+
+    if (map.count("no-tuning"))
     {
-        map.erase("gss");
-        std::cout << "Using Golden Section Search algorithm as selected.\n";
-        search = SearchType::GOLDEN_SECTION_SEARCH;
-    }
-    else if (map.count("ls"))
-    {
-        map.erase("ls");
-        std::cout << "Using Linear Search algorithm as selected.\n";
-        search = SearchType::LINEAR_SEARCH;
+        std::cout << "Running application with power and energy consumption monitoring only.\n";
     }
     else
     {
-        std::cout << "Using Linear Search algorithm by default.\n";
-    }
-    if (map.count("en"))
-    {
-        map.erase("en");
-        std::cout << "Using ENERGY metric as selected.\n";
-        metric = TargetMetric::MIN_E;
-    }
-    else if (map.count("edp"))
-    {
-        map.erase("edp");
-        std::cout << "Using ENERGY DELAY PRODUCT metric as selected.\n";
-        metric = TargetMetric::MIN_E_X_T;
-    }
-    else if (map.count("eds"))
-    {
-        map.erase("eds");
-        std::cout << "Using ENERGY DELAY SUM metric as selected.\n";
-        metric = TargetMetric::MIN_M_PLUS;
-    }
-    else
-    {
-        std::cout << "Using ENERGY metric by default.\n";
+        if (map.count("gss"))
+        {
+            map.erase("gss");
+            std::cout << "Using Golden Section Search algorithm as selected.\n";
+            search = SearchType::GOLDEN_SECTION_SEARCH;
+        }
+        else if (map.count("ls"))
+        {
+            map.erase("ls");
+            std::cout << "Using Linear Search algorithm as selected.\n";
+            search = SearchType::LINEAR_SEARCH;
+        }
+        else
+        {
+            std::cout << "Using Linear Search algorithm by default.\n";
+        }
+        if (map.count("en"))
+        {
+            map.erase("en");
+            std::cout << "Using ENERGY metric as selected.\n";
+            metric = TargetMetric::MIN_E;
+        }
+        else if (map.count("edp"))
+        {
+            map.erase("edp");
+            std::cout << "Using ENERGY DELAY PRODUCT metric as selected.\n";
+            metric = TargetMetric::MIN_E_X_T;
+        }
+        else if (map.count("eds"))
+        {
+            map.erase("eds");
+            std::cout << "Using ENERGY DELAY SUM metric as selected.\n";
+            metric = TargetMetric::MIN_M_PLUS;
+        }
+        else
+        {
+            std::cout << "Using ENERGY metric by default.\n";
+        }
     }
     return std::make_pair(metric, search);
 }
@@ -91,6 +99,7 @@ void cleanArgv(int& argc, char* argv[])
             flag == "--en"  ||
             flag == "--edp" ||
             flag == "--eds" ||
+            flag == "--no-tuning" ||
             std::string(flag).substr(0,6) == "--gpu="
             )
         {
@@ -156,7 +165,8 @@ int main (int argc, char *argv[])
         ("ls", "use Linear search algorithm")
         ("en", "use Energy metric")
         ("edp", "use Energy Delay Product metric")
-        ("eds", "use Energy Delay Sum metric")
+        ("eds", "use Energy SumDelay  metric")
+        ("no-tuning", "run app only checking the power and energy consumption")
         ("gpu", po::value<int>(), "use GPU backend for card with specified ID")
     ;
     po::variables_map optionsMap;
@@ -175,10 +185,10 @@ int main (int argc, char *argv[])
     cleanArgv(argc, argv);
 
 
-    std::unique_ptr<EcoApi> eco;
+    std::shared_ptr<Device> device;
     if (gpuID.has_value())
     {
-        eco = std::make_unique<GpuEco>(gpuID.value());
+        device = std::make_shared<CudaDevice>(gpuID.value());
 
         int e1 = setenv("INJECTION_KERNEL_COUNT", "1", 1);
         std::string path = readPathInfo();
@@ -197,25 +207,35 @@ int main (int argc, char *argv[])
     }
     else
     {
-        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>());
+        device = std::make_shared<IntelDevice>();
     }
-    std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
-    BothStream bout(outResultFile);
-    bout << "# ";
+
+    std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
+    std::stringstream ssout;
+    std::stringstream applicationCommand;
     for (int i=1; i<argc; i++) {
-        bout <<  argv[i] << " ";
+        applicationCommand <<  argv[i] << " ";
+        std::cout <<  argv[i] << " ";
     }
-    bout << "\n";
+    ssout << "# " << applicationCommand.str() << "\n";
 
     FinalPowerAndPerfResult result;
-    result = eco->runAppWithSearch(argv, metric, search, argc);
-    std::cout << "\n"
-              << "E: " << result.energy << " J\n"
-              << "t: " << result.time_.totalTime_ << " s\n"
-              << "P: " << result.pkgPower << " W\n";
+    bool printPowerLogWithDynamicMetrics = true;
+    if (optionsMap.count("no-tuning"))
+    {
+        result = eco->runAppWithSampling(argv, argc);
+        printPowerLogWithDynamicMetrics = false;
+    }
+    else
+    {
+        result = eco->runAppWithSearch(argv, metric, search, argc);
+    }
+    ssout << std::fixed << std::setprecision(3)
+         << "# Energy[J]\ttime[s]\tPower[W]\n"
+         << result.energy << "\t" << result.time_.totalTime_ << "\t" << result.pkgPower <<"\n";
 
-    outResultFile.close();
-    eco->plotPowerLog();
+    eco->logToResultFile(ssout);
+    eco->plotPowerLog(result, applicationCommand.str(), printPowerLogWithDynamicMetrics);
 
     if (gpuID.has_value())
     {

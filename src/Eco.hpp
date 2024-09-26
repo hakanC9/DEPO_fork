@@ -19,6 +19,8 @@
 #include <chrono>
 #include <memory>
 #include <set>
+#include <optional>
+#include <functional>
 // Workaround: below two has to be included in such order to ensure no warnings
 //             about macro redefinitions. Some of the macros in Rapl.hpp are already
 //             defined in types.h included by cpucounters.h but not all of them.
@@ -30,6 +32,9 @@
 #include "helpers/params_config.hpp"
 #include "helpers/data_filter.hpp"
 #include "helpers/both_stream.hpp"
+#include "helpers/log.hpp"
+#include "trigger.hpp"
+
 
 template <class F>
 inline auto measureDuration(F&& fun)
@@ -47,100 +52,263 @@ void validateExecStatus(int status) {
     }
 }
 
-class EcoApi
+using Algorithm = std::function<unsigned(
+  std::shared_ptr<Device>,
+  DeviceStateAccumulator&,
+  Trigger&,
+  TargetMetric,
+  const PowAndPerfResult&,
+  int&,
+  int,
+  int,
+  int,
+  Logger&)>;
+
+class Eco
 {
   public:
-    virtual void idleSample(int) = 0;
-    virtual FinalPowerAndPerfResult runAppWithSampling(char* const*, int) = 0;
-    virtual FinalPowerAndPerfResult runAppWithSearch(char* const*, TargetMetric, SearchType, int) = 0;
-    virtual void plotPowerLog() = 0;
-    virtual std::string getDeviceName() const = 0;
-
-    double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
-    void setCustomK(double k) { cfg_.k_ = k; } // temporary setter until Eco is reorganised
-    int getNumIterations() { return cfg_.numIterations_; }
-    std::string getResultFileName() const { return outResultFileName_; }
-    std::string getPowerLogFileName() const { return outPowerFileName_; }
-    EcoApi() = default;
-    virtual ~EcoApi() = default;
-  protected:
-    ParamsConfig cfg_; // stores defaults values of params or reads it from params.conf
-    std::string outResultFileName_;
-    std::string outPowerFileName_;
-};
-
-class Eco : public EcoApi
-{
-  public:
-    void idleSample(int idleTimeS) override;
-    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1) override;
+    FinalPowerAndPerfResult runAppWithSampling(char* const*, int = 1);
     FinalPowerAndPerfResult runAppWithSearch(
       char* const*,
       TargetMetric,
       SearchType,
-      int = 1) override;
-    void plotPowerLog() override;
-    std::string getDeviceName() const override { return device_->getName(); }
+      int = 1);
+    void plotPowerLog(std::optional<FinalPowerAndPerfResult>, std::string = "", bool=false);
+    std::string getDeviceName() const { return device_->getName(); }
 
-    void staticEnergyProfiler(char* const* argv, BothStream& stream);
+    void staticEnergyProfiler(char* const* argv, int argc);
 
-    void referenceRunWithoutCaps(char* const*);
-    void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
-    void storeReferenceRun(FinalPowerAndPerfResult&);
-
-    Eco(std::shared_ptr<IntelDevice>);
+    Eco() = delete;
+    Eco(std::shared_ptr<Device>);
     virtual ~Eco();
+    std::string getResultFileName() const { return logger_.getResultFileName(); }
+    void logToResultFile(std::stringstream& ss) { logger_.logToResultFile(ss); }
+
+    double getK() { return cfg_.k_; } // temporary getter until Eco is reorganised
+    void setCustomK(double k) { cfg_.k_ = k; } // temporary setter until Eco is reorganised
+    int getNumIterations() { return cfg_.numIterations_; }
 
   protected:
-    enum class FilterType {
-        SMA50,
-        SMA100,
-        SMA200,
-        SMA_1_S,
-        SMA_2_S,
-        SMA_5_S,
-        SMA_10_S,
-        SMA_20_S
-    };
   private:
-    std::map<FilterType, DataFilter> smaFilters_;
-    FilterType activeFilter_ {FilterType::SMA100};
-    DataFilter filter2order_;
+    ParamsConfig cfg_; // stores defaults values of params or reads it from config.yaml
+    Trigger trigger_;
     std::shared_ptr<Device> device_;
     CrossDomainQuantity idleAvPow_;
-    double pprevSMA_ {0.0}, prevSMA_ {0.0};
-    bool optimizationTrigger_ {false};
 
     DeviceStateAccumulator devStateGlobal_;
-    DeviceStateAccumulator devStateLocal_;
     std::vector<FinalPowerAndPerfResult> fullAppRunResultsContainer_;
+    Logger logger_;
 
     WatchdogStatus defaultWatchdog;
-    std::ofstream outPowerFile;
-    double defaultPowerLimitInWatts_; // PKG domain power limit
-
-    void storeDataPointToFilters(double);
-    double getFilteredPower();
     void modifyWatchdog(WatchdogStatus);
     WatchdogStatus readWatchdog();
-    void raplSample();
-    std::string generateUniqueResultDir();
-    std::vector<int> generateVecOfPowerCaps(Domain = PowerCapDomain::PKG);
+    std::vector<int> prepareListOfPowerCapsInMicroWatts(/*Domain = PowerCapDomain::PKG*/);
     void singleAppRunAndPowerSample(char* const*);
     FinalPowerAndPerfResult multipleAppRunAndPowerSample(char* const*, int);
-    void checkIdlePowerConsumption();
-    void localPowerSample(int);
     PowAndPerfResult checkPowerAndPerformance(int);
-    PowAndPerfResult setCapAndMeasure(int, int);
-    void justSample(int timeS);
     void reportResult(double = 0.0, double = 0.0);
-    void waitPhase(int&, int);
-    int testPhase(int&, int&, TargetMetric, SearchType, PowAndPerfResult&, int&, int);
-    void execPhase(int, int&, int, PowAndPerfResult&, bool = false);
+    void waitForTuningTrigger(int&, int);
+    void execPhase(int, int&, int, PowAndPerfResult&);
     void mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
-    int linearSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
-    int goldenSectionSearchForBestPowerCap(PowAndPerfResult&, int&, int&, TargetMetric, int&, int);
 
-    static constexpr int REFERENCE_RUN_MULTIPLIER {3};
+};
+
+#include <sys/wait.h>
+
+class SearchAlgorithm
+{
+  public:
+    virtual unsigned operator() (
+      std::shared_ptr<Device>,
+      DeviceStateAccumulator&,
+      Trigger&,
+      TargetMetric,
+      const PowAndPerfResult&,
+      int&,
+      int,
+      int,
+      int,
+      Logger&) const = 0;
+
+    static PowAndPerfResult sampleAndAccumulatePowAndPerfForGivenPeriod(
+      int tuningTimeWindowInMicroSeconds,
+      int powerSamplingPeriodInMilliSeconds,
+      DeviceStateAccumulator& deviceState,
+      Trigger& trigger,
+      int& procStatus,
+      int childProcID,
+      Logger& logger)
+    {
+      auto pauseInMicroSeconds = powerSamplingPeriodInMilliSeconds * 1000;
+      usleep(pauseInMicroSeconds);
+      deviceState.sample();
+      auto resultAccumulator = deviceState.getCurrentPowerAndPerf();
+
+      while (tuningTimeWindowInMicroSeconds > pauseInMicroSeconds)
+      {
+        usleep(pauseInMicroSeconds);
+        deviceState.sample();
+        auto tmp = deviceState.getCurrentPowerAndPerf(trigger);
+        logger.logPowerLogLine(deviceState, tmp);
+        resultAccumulator += tmp;
+        tuningTimeWindowInMicroSeconds -= pauseInMicroSeconds;
+
+        waitpid(childProcID, &procStatus, WNOHANG);
+        if (!procStatus) break;
+      }
+
+      return resultAccumulator;
+    }
+};
+
+class LinearSearchAlgorithm : public SearchAlgorithm
+{
+  public:
+    unsigned operator() (
+      std::shared_ptr<Device> device,
+      DeviceStateAccumulator& deviceState,
+      Trigger& trigger,
+      TargetMetric metric,
+      const PowAndPerfResult& reference,
+      int& procStatus,
+      int childProcID,
+      int powerSamplingPeriodInMilliSeconds,
+      int tuningTimeWindowInMilliSeconds,
+      Logger& logger) const
+    {
+      const auto [minLimitInWatts, maxLimitInWatts] = device->getMinMaxLimitInWatts();
+      const auto minLimitInMictoWatts = minLimitInWatts * 1e6;
+      const auto maxLimitInMictoWatts = maxLimitInWatts * 1e6;
+      int STEP = (maxLimitInMictoWatts - minLimitInMictoWatts) / 10;
+
+      auto bestResultSoFar = reference;
+      int currentLimitInMicroWatts = maxLimitInMictoWatts;
+
+      while(procStatus)
+      {
+        device->setPowerLimitInMicroWatts(currentLimitInMicroWatts);
+        auto&& currentResult = sampleAndAccumulatePowAndPerfForGivenPeriod(
+          tuningTimeWindowInMilliSeconds * 1e3,
+          powerSamplingPeriodInMilliSeconds,
+          deviceState,
+          trigger,
+          procStatus,
+          childProcID,
+          logger);
+        logger.logPowerLogLine(deviceState, currentResult, reference);
+        if (bestResultSoFar.isRightBetter(currentResult, metric))
+        {
+            bestResultSoFar = std::move(currentResult);
+        }
+        if (currentLimitInMicroWatts == minLimitInMictoWatts)
+        {
+            break;
+        }
+        currentLimitInMicroWatts -= STEP;
+        if (currentLimitInMicroWatts < minLimitInMictoWatts)
+        {
+          currentLimitInMicroWatts = minLimitInMictoWatts;
+        }
+        waitpid(childProcID, &procStatus, WNOHANG);
+      }
+      return (unsigned)(bestResultSoFar.appliedPowerCapInWatts_ * 1e6);
+    }
+};
+
+class GoldenSectionSearchAlgorithm : public SearchAlgorithm
+{
+  public:
+    unsigned operator() (
+      std::shared_ptr<Device> device,
+      DeviceStateAccumulator& deviceState,
+      Trigger& trigger,
+      TargetMetric metric,
+      const PowAndPerfResult& reference,
+      int& procStatus,
+      int childProcID,
+      int powerSamplingPeriodInMilliSeconds,
+      int tuningTimeWindowInMilliSeconds,
+      Logger& logger) const
+    {
+        const auto [minLimitInWatts, maxLimitInWatts] = device->getMinMaxLimitInWatts();
+        int EPSILON = (maxLimitInWatts - minLimitInWatts) * 1e6 / 25;
+
+        int a = minLimitInWatts * 1e6; // micro watts
+        int b = maxLimitInWatts * 1e6; // micro watts
+
+        int leftCandidateInMicroiWatts = b - int(PHI * (b - a));
+        int rightCandidateInMicroWatts = a + int(PHI * (b - a));
+
+        bool measureL = true;
+        bool measureR = true;
+
+        PowAndPerfResult tmp = reference;
+
+        while ((b - a) > EPSILON)
+        {
+          logCurrentRangeGSS(a, leftCandidateInMicroiWatts/1000, rightCandidateInMicroWatts/1000, b);
+          auto fL = tmp;
+          if (measureL)
+          {
+            device->setPowerLimitInMicroWatts(leftCandidateInMicroiWatts);
+            fL = sampleAndAccumulatePowAndPerfForGivenPeriod(
+              tuningTimeWindowInMilliSeconds * 1000,
+              powerSamplingPeriodInMilliSeconds,
+              deviceState,
+              trigger,
+              procStatus,
+              childProcID,
+              logger);
+            logger.logPowerLogLine(deviceState, fL, reference);
+          }
+          auto fR = tmp;
+          if (measureR)
+          {
+            device->setPowerLimitInMicroWatts(rightCandidateInMicroWatts);
+            fR = sampleAndAccumulatePowAndPerfForGivenPeriod(
+              tuningTimeWindowInMilliSeconds * 1000,
+              powerSamplingPeriodInMilliSeconds,
+              deviceState,
+              trigger,
+              procStatus,
+              childProcID,
+              logger);
+            logger.logPowerLogLine(deviceState, fR, reference);
+          }
+
+          if (!fL.isRightBetter(fR, metric)) {
+            // choose subrange [a, rightCandidateInMilliWatts]
+            b = rightCandidateInMicroWatts;
+            rightCandidateInMicroWatts = leftCandidateInMicroiWatts;
+            tmp = fL;
+            measureR = false;
+            measureL = true;
+            leftCandidateInMicroiWatts = b - int(PHI * (b - a));
+          } else {
+            // choose subrange [leftCandidateInMilliWatts, b]
+            a = leftCandidateInMicroiWatts;
+            leftCandidateInMicroiWatts = rightCandidateInMicroWatts;
+            tmp = fR;
+            measureR = true;
+            measureL = false;
+            rightCandidateInMicroWatts = a + int(PHI * (b - a));
+          }
+          waitpid(childProcID, &procStatus, WNOHANG);
+          if (!procStatus) break;
+        }
+        return (a + b) / 2;
+    }
+    static constexpr float PHI {(sqrt(5) - 1) / 2}; // this is equal 0.618 and it is reverse of 1.618
+  private:
+    void logCurrentRangeGSS(int a, int leftCandidateInMilliWatts, int rightCandidateInMilliWatts, int b) const
+    {
+        std::cout << "#--------------------------------\n"
+                  << "# Current GSS range: |"
+                  << a << " "
+                  << leftCandidateInMilliWatts << " "
+                  << rightCandidateInMilliWatts << " "
+                  << b << "|\n"
+                  << "#--------------------------------\n";
+    }
 };

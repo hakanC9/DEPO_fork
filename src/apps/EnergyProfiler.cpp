@@ -15,7 +15,7 @@
 */
 
 #include "../Eco.hpp"
-#include "../gpu_eco.hpp"
+#include "../cuda_device.hpp"
 #include "../plot_builder.hpp"
 
 int main (int argc, char *argv[]) {
@@ -25,14 +25,13 @@ int main (int argc, char *argv[]) {
 	watchdog << "0";
 	watchdog.close();
 
-    std::unique_ptr<EcoApi> eco;
     bool isGpu = false;
+    int gpuID = -1;
     if (argc >= 1)
     {
         if(std::string(argv[1]).substr(0,6) == "--gpu=")
         {
-            int gpuID = stoi(std::string(argv[1]).substr(6,1));
-            eco = std::make_unique<GpuEco>(gpuID);
+            gpuID = stoi(std::string(argv[1]).substr(6,1));
             // remove the --gpu flag from 1st arg
             for (int i = 1; i < argc -1; i++)
             {
@@ -41,47 +40,22 @@ int main (int argc, char *argv[]) {
             argc--;
             isGpu = true;
         }
-        else
-        {
-        eco = std::make_unique<Eco>(std::make_shared<IntelDevice>());
-        }
     }
 
-    std::ofstream outResultFile (eco->getResultFileName(), std::ios::out | std::ios::trunc);
-
-    BothStream bout(outResultFile);
-    bout << "# ";
-    for (int i=1; i<argc; i++) {
-        bout << argv[i] << " ";
-    }
-    bout << "\n";
-    bout << "#Pow.cap\tEnerg\tAv.P.PK"/*\tAv.P.P0\tAv.P.P1\tAv.P.DR*/<<"\ttime\tExt"
-         << "\tdE\tdt\t%dE\t%dt"/*\tdE/dt\t%dE/%dt\tinstr\tcycl\tins/s\tcyc/s*/<<"\tP/(cycl/s)\n";
-    bout << "#[W]\t[J]\t[W]"/*\t[W]\t[W]\t[W]*/ << "\t[s]"
-         << "\t[Js]\t[J]\t[s]\t[%J]\t[%s]"/*\t[J/s]\t[-]\t[x1M]\t[x1M]\t[x1M/s]\t[x1M/s]\t*/ <<"[(cycl)/J]\t[(cycl/s)^2/W)]\n";
-
+    std::shared_ptr<Device> device;
     if(!isGpu)
     {
-        // auto domainVec = {PowerCapDomain::PKG};//,
-        //                 //   PowerCapDomain::PP0,
-        //                 //   PowerCapDomain::PP1,
-        //                 //   PowerCapDomain::DRAM};
-        // dynamic_cast<Eco*>(eco.get())->referenceRunWithoutCaps(argv);
-        // for (auto currentDom : domainVec)
-        // {
-        //     dynamic_cast<Eco*>(eco.get())->runAppForEachPowercap(argv, bout, currentDom);
-        //     sleep(1);
-        // }
-        dynamic_cast<Eco*>(eco.get())->staticEnergyProfiler(argv, bout);
+        device = std::make_shared<IntelDevice>();
     }
     else
     {
-        dynamic_cast<GpuEco*>(eco.get())->staticEnergyProfiler(argv, argc, bout);
+        device = std::make_shared<CudaDevice>(gpuID);
     }
+    std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
 
-    bout.flush();
-    outResultFile.close();
-    eco->plotPowerLog();
+    eco->staticEnergyProfiler(argv, argc);
+
+    eco->plotPowerLog(std::nullopt);
 
     // Plot result file automatically
     std::string imgFileName = eco->getResultFileName();

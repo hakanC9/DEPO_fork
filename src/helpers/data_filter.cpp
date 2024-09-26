@@ -18,7 +18,8 @@
 
 #include <algorithm>
 
-double DataFilter::getSum() {
+double DataFilter::getSum() const
+{
     double acc = 0.0;
     for (auto&& dataPoint : data_) {
         acc += dataPoint;
@@ -26,7 +27,8 @@ double DataFilter::getSum() {
     return acc;
 }
 
-double DataFilter::getSMA() {
+double DataFilter::getSMA() const
+{
     return getSum() / data_.size();
 }
 
@@ -48,12 +50,20 @@ void DataFilter::shiftActiveIndex() {
     }
 }
 
-double DataFilter::getCleanedRelativeError() {
-    const auto minmax = std::minmax_element(data_.begin(), data_.end());
-    auto min = *minmax.first;
-    auto max = *minmax.second;
-    auto cleanedSMA = (getSum() - (min + max)) / (data_.size() - 2);
-    return (max - min) / cleanedSMA;
+double DataFilter::getCleanedRelativeError() const
+{
+    if (data_.size() >1)
+    {
+        const auto minmax = std::minmax_element(data_.begin(), data_.end());
+        auto min = *minmax.first;
+        auto max = *minmax.second;
+        auto cleanedSMA = (getSum() - (min + max)) / (data_.size() - 2);
+        return (max - min) / cleanedSMA;
+    }
+    else
+    {
+        return 1.00;
+    }
 }
 
 double DataFilter::getRelativeError() {

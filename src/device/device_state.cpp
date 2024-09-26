@@ -26,7 +26,6 @@ DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<Device> d) :
     curr_(prev_),
     next_(prev_)
 {
-    std::cout << "[DEBUG] DeviveStateAccumulator constructor called!" << std::endl;
 }
 
 void DeviceStateAccumulator::resetState()
@@ -43,7 +42,7 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
     prev_ = curr_;
     curr_ = next_;
     // ------------------------------------------------------------------
-    // this is specific to Intel RAPL power/energy measurements
+    // this is specific to Intel RAPL power/energy measurements:
     // in order to have any valid readings, RAPL must be sampled
     // preety frequently so that the energy counter reading is updated
     // before the couter overflow.
@@ -53,7 +52,7 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
     const auto  perfCounter = device_->getPerfCounter();
 
     next_ = PowerAndPerfState(
-        device_->getCurrentPowerInWatts(),
+        device_->getCurrentPowerInWatts(std::nullopt),
         perfCounter,
         std::chrono::high_resolution_clock::now());
 
@@ -64,7 +63,7 @@ DeviceStateAccumulator& DeviceStateAccumulator::sample()
 
 double DeviceStateAccumulator::getCurrentPower(Domain d)
 {
-    return device_->getCurrentPowerInWatts();
+    return device_->getCurrentPowerInWatts(d);
 }
 
 double DeviceStateAccumulator::getPerfCounterSinceReset()
@@ -77,17 +76,23 @@ double DeviceStateAccumulator::getEnergySinceReset() const
     return totalEnergySinceReset_;
 }
 
-PowAndPerfResult DeviceStateAccumulator::getCurrentPowerAndPerf() const
+PowAndPerfResult DeviceStateAccumulator::getCurrentPowerAndPerf(std::optional<std::reference_wrapper<Trigger>> trigger) const
 {
+    double perfCounterDelta = (double)(next_.kernelsCount_ - curr_.kernelsCount_);
+    if (trigger.has_value())
+    {
+        trigger->get().appendPowerSampleToSmaFilter(next_.power_);
+        trigger->get().updateComputeActivityFlag(perfCounterDelta > 0.0);
+    }
     double timeDeltaMilliSeconds = std::chrono::duration_cast<std::chrono::milliseconds>(next_.time_ - curr_.time_).count();
     return PowAndPerfResult(
-        (double)(next_.kernelsCount_ - curr_.kernelsCount_),
+        perfCounterDelta,
         timeDeltaMilliSeconds / 1000,
         device_->getPowerLimitInWatts(),
         next_.power_ * timeDeltaMilliSeconds / 1000, // Watts x seconds
         next_.power_,
         0.0, // memory power - not available for GPU
-        next_.power_ // TODO: this should be filtered power
+        (trigger.has_value() ? trigger->get().getCurrentFilteredPowerInWatts() : -1.0) // TODO: this should be filtered power
         );
 }
 

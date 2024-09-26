@@ -23,14 +23,14 @@ public:
     DataFilter() = delete;
     DataFilter(int size) :
         filterSize_(size) {}
-    double getSMA();
+    double getSMA() const;
     double getRelativeError();
-    double getCleanedRelativeError();
+    double getCleanedRelativeError() const;
 
     void storeDataPoint(double dataPoint);
 private:
     void shiftActiveIndex();
-    double getSum();
+    double getSum() const;
 
     std::vector<double> data_;
     unsigned filterSize_;

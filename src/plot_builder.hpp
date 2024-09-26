@@ -49,13 +49,15 @@ public:
 
     void plot(std::vector<Series> sv);
     void plotPowerLog(std::vector<Series> sv);
+    void plotPowerLogWithDynamicMetrics(std::vector<Series> top, std::vector<Series> bottom);
     void plotRelMetr(std::vector<Series> sv);
     void setLegend(Legend option);
     void plotTmp(std::string);
     void plotTmpGSS(std::string);
     void plotEPet(std::string);
     void plotEPall(std::string);
-    void setPlotTitle(std::string title);
+    void setPlotTitle(std::string title, int fontSize = 20);
+    void setSimpleSubtitle(std::string subtitleText, int fontSize=16, float screenVerticalPosition=0.86);
     void submitPlot();
     void setXlabel(std::string xLabel, int fontSize = 20);
     void setYlabel(std::string xLabel, int fontSize = 20);
@@ -82,6 +84,6 @@ private:
                                          int fontSize = 12, std::string baseValueVar = "1");
     std::vector<std::string> stylesVec_ {"11", "21", "31", "12", "22", "32", "13", "23", "33", "4", "5", "6", "7"};
     std::vector<std::string> grayStylesVec_ {"555", "222", "333", "444", "111"};
-    std::string outputFileName_ {"heheszki.png"};
+    std::string outputFileName_ {"plot.png"};
     Gnuplot *gp_;
 };

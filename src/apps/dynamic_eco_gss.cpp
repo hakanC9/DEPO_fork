@@ -115,7 +115,7 @@ int main (int argc, char *argv[]) {
             eco.setCustomK(k);
             ResultsContainer results(numIterations);
             for (int i = 0; i < numIterations; i++) {
-                eco.idleSample(10); // separate test runs with 10 seconds break
+                // eco.idleSample(10); // separate test runs with 10 seconds break
                 results.storeOneResult(i, eco.runAppWithSearch(argv, metric, searchType));
             }
             tmp << metric << printResult(resultsDef, results, k).str() << "\n\n";
@@ -128,7 +128,7 @@ int main (int argc, char *argv[]) {
     bout.flush();
     outResultFile.close();
 
-    eco.plotPowerLog();
+    eco.plotPowerLog(std::nullopt);
 
     // Plot result file automatically
     std::string imgFileName = eco.getResultFileName();
