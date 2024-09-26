@@ -148,17 +148,14 @@ PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
     usleep(pause);
     devStateGlobal_.sample();
     auto resultAccumulator = devStateGlobal_.getCurrentPowerAndPerf(trigger_);
-    // std::cout << "\n[INFO] Firstt data point " << resultAccumulator << std::endl;
     while (usPeriod > pause){
         usleep(pause);
         devStateGlobal_.sample();
         auto tmp = devStateGlobal_.getCurrentPowerAndPerf(trigger_);
         logger_.logPowerLogLine(devStateGlobal_, tmp);
         resultAccumulator += tmp;
-        // std::cout << "[INFO] Single data point " << tmp << std::endl;
         usPeriod -= pause;
     }
-    // std::cout << "[INFO] Finall data point " << resultAccumulator << std::endl;
 
     return resultAccumulator;
 }
@@ -223,11 +220,11 @@ void Eco::waitForTuningTrigger(int& status, int childPID) {
     while ((!trigger_.isDeviceReadyForTuning()) && status)
     {
         auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
-        std::cout << FLUSH_AND_RETURN
-                << logCurrentResultLine(papResult, papResult, cfg_.k_, true /* no new line */);
+        // std::cout << FLUSH_AND_RETURN
+        //         << logCurrentResultLine(papResult, papResult, cfg_.k_, true /* no new line */);
 
     }
-    std::cout << "\n";
+    // std::cout << "\n";
     printLine();
 }
 
@@ -244,8 +241,7 @@ void Eco::execPhase(
     {
         auto papResult = checkPowerAndPerformance(cfg_.usTestPhasePeriod_);
         repetitionPeriodInUs = trigger_.isTuningPeriodic() ? repetitionPeriodInUs - cfg_.usTestPhasePeriod_ : repetitionPeriodInUs;
-        // std::cout << FLUSH_AND_RETURN;
-        // std::cout << logCurrentResultLine(papResult, refResult, cfg_.k_, true /* no new line */);
+
         logger_.logPowerLogLine(devStateGlobal_, papResult, refResult);
         waitpid(childPID, &status, WNOHANG);
         if (external_trigger_flag.load())
@@ -415,73 +411,6 @@ FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int
     return sum;
 }
 
-void Eco::runAppForEachPowercap(char* const* argv, BothStream& stream, Domain dom) {
-    // This is legacy method which requires prior referenceRunWithoutCaps() method call.
-    // This method was used when there was a need for static
-    // evaluation of different power caps for a given power domain.
-    // In recent Intel based CPUs there is no PP0 and PP1 domains so that
-    // it is really only a matter if one want to limit PKG domain or DRAM.
-    // The method will be probably removed soon.
-    // For now the tool supports only PKG domain and static energy profiling is covered
-    // end-to-end by staticEnergyProfiler() method of ECO class.
-    // if (device_->isDomainAvailable(dom))
-    // {
-    //     stream << "#[INFO] Running tests for domain " << dom << ".\n";
-    //     const auto ref = fullAppRunResultsContainer_.front(); //TODO: remove the dependency on reference run
-    //     stream << std::fixed << std::setprecision(3) << ref << "\n";
-    //     auto powerLimitsVec = prepareListOfPowerCapsInMicroWatts(dom);
-    //     auto loopsToDo = powerLimitsVec.size();
-    //     for (auto& currentLimit : powerLimitsVec) {
-    //         std::cout << loopsToDo-- << " ";
-    //         device_->setPowerLimitInMicroWatts(currentLimit, dom);
-    //         auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
-    //         auto k = getK();
-    //         auto mPlus = EnergyTimeResult(avResult.energy,
-    //                                       avResult.time_.totalTime_,
-    //                                       avResult.pkgPower).checkPlusMetric(ref.getEnergyAndTime(), k);
-    //         auto mPlusDynamic = (1.0/k) * (ref.getInstrPerSec() / avResult.getInstrPerSec()) *
-    //                             ((k-1.0) * (avResult.getEnergyPerInstr() / ref.getEnergyPerInstr()) + 1.0);
-    //         auto&& timeDelta = avResult.time_.totalTime_ - ref.time_.totalTime_;
-    //         fullAppRunResultsContainer_.emplace_back((double)currentLimit / 1000000,
-    //                                         avResult.energy,
-    //                                         avResult.pkgPower,
-    //                                         avResult.pp0power,
-    //                                         avResult.pp1power,
-    //                                         avResult.dramPower,
-    //                                         avResult.time_.totalTime_,
-    //                                         avResult.inst,
-    //                                         avResult.cycl,
-    //                                         avResult.energy - ref.energy,
-    //                                         timeDelta,
-    //                                         100 * (avResult.energy - ref.energy) / ref.energy,
-    //                                         100 * (timeDelta) / ref.time_.totalTime_,
-    //                                         mPlus);
-    //         stream << fullAppRunResultsContainer_.back() << "\t" << mPlusDynamic << "\n";
-    //         if (fullAppRunResultsContainer_.back().relativeDeltaT > (double)cfg_.perfDropStopCondition_) {
-    //             break;
-    //         }
-    //     }
-    //     device_->restoreDefaults();
-    //     stream << "# PowerCap for: min(E): "
-    //            << std::min_element(fullAppRunResultsContainer_.begin(),
-    //                                fullAppRunResultsContainer_.end(),
-    //                                CompareFinalResultsForMinE())->powercap
-    //            << " W, "
-    //            << "min(Et): "
-    //            << std::min_element(fullAppRunResultsContainer_.begin(),
-    //                                fullAppRunResultsContainer_.end(),
-    //                                CompareFinalResultsForMinEt())->powercap
-    //            << " W, "
-    //            << "min(M+): "
-    //            << std::min_element(fullAppRunResultsContainer_.begin(),
-    //                                fullAppRunResultsContainer_.end(),
-    //                                CompareFinalResultsForMplus())->powercap
-    //            << " W.\n";
-    // } else {
-    //     stream << "[INFO] Domain " << dom << " is not supproted.\n";
-    // }
-}
-
 WatchdogStatus Eco::readWatchdog() {
     if (readLimitFromFile("/proc/sys/kernel/nmi_watchdog") > 0) {
         return WatchdogStatus::ENABLED;
@@ -496,7 +425,8 @@ void Eco::modifyWatchdog(WatchdogStatus status) {
     watchdog.close();
 }
 
-void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
+void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results, std::string appCommand, bool plotDynamicMetrics)
+{
     logger_.flush();
     const auto f = logger_.getPowerFileName();
     // std::string imgFileName = outPowerFileName_;
@@ -505,16 +435,15 @@ void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
     PlotBuilder p(imgFileName.replace(imgFileName.end() - 3,
                                       imgFileName.end(),
                                       "png"));
-    p.setPlotTitle("Power Log - " + getDeviceName(), 16);
+    p.setPlotTitle(device_->getDeviceTypeString() + " power log: " + device_->getName() + " running " + appCommand, 16);
+    std::stringstream ss;
     if(results)
     {
-        std::stringstream ss;
         ss << std::fixed << std::setprecision(3)
         << "Total E: " << results->energy << " J"
         << "    Total time: " << results->time_.totalTime_ << " s"
         << "    av. Power: " << results->pkgPower << " W";
         // << "    last powercap: " << results->powercap << " W";
-        p.setSimpleSubtitle(ss.str(), 12);
     }
     Series powerCap (f, 1, 2, "P cap [W]");
     Series currPower (f, 1, 3, "P[W]");
@@ -522,22 +451,27 @@ void Eco::plotPowerLog(std::optional<FinalPowerAndPerfResult> results) {
     Series currENG (f, 1, 7, "ENG");
     Series currEDP (f, 1, 8, "EDP");
     Series currPERF (f, 1, 9, "PERF");
-    // Series powerCap (outPowerFileName_, 1, 2, "P cap [W]");
-    // Series currPKGpower (outPowerFileName_, 1, 3, "current PKG P[W]");
-    // Series currSMA50power (outPowerFileName_, 1, 4, "SMA50 PKG P[W]");
-    // Series currSMA100power (outPowerFileName_, 1, 5, "filtered PKG P[W]");
-    // Series currSMA200power (outPowerFileName_, 1, 6, "SMA200 PKG P[W]");
-    // Series currDRAMpower (outPowerFileName_, 1, 7, "current DRAM P[W]");
-    p.plotPowerLog({powerCap,
-                    currPower,
-                    smaPower,
-                    // currSMA100power
-                    });
+
+    if (!plotDynamicMetrics)
+    {
+        p.setSimpleSubtitle(ss.str(), 12);
+        p.plotPowerLog({powerCap, currPower,smaPower});
+    }
+    else
+    {
+        Series dyn_en (f, 1, 11, "Dyn. EN");
+        Series dyn_edp (f, 1, 12, "Dyn. EDP");
+        Series dyn_eds (f, 1, 13, "Dyn. EDS");
+        Series dyn_perf (f, 1, 10, "Dyn. Perf");
+        p.setSimpleSubtitle(ss.str(), 12, 0.92);
+        p.plotPowerLogWithDynamicMetrics(
+            {powerCap, currPower,smaPower},
+            {dyn_en, dyn_edp, dyn_eds, dyn_perf});
+    }
 }
 
 void Eco::staticEnergyProfiler(char* const* argv, int argc)
 {
-    // PowerCapDomain dom = PowerCapDomain::PKG;
     std::vector<FinalPowerAndPerfResult> resultsVec;
     const auto&& warmup = runAppWithSampling(argv);
     std::stringstream stream;
@@ -546,10 +480,8 @@ void Eco::staticEnergyProfiler(char* const* argv, int argc)
         stream << argv[i] << " ";
     }
     stream << "\n";
-    stream << "# Pow.cap\tEnerg\tAv.P.PK"/*\tAv.P.P0\tAv.P.P1\tAv.P.DR*/<<"\ttime\tExt"
-         << "\tdE\tdt\t%dE\t%dt"/*\tdE/dt\t%dE/%dt\tinstr\tcycl\tins/s\tcyc/s*/<<"\tP/(cycl/s)\n";
-    stream << "# [W]\t[J]\t[W]"/*\t[W]\t[W]\t[W]*/ << "\t[s]"
-         << "\t[Js]\t[J]\t[s]\t[%J]\t[%s]"/*\t[J/s]\t[-]\t[x1M]\t[x1M]\t[x1M/s]\t[x1M/s]\t*/ <<"[(cycl)/J]\t[(cycl/s)^2/W)]\n";
+    stream << "# P_cap\tE\tP_av\ttime\tEDP\tdE\tdt\t%dE\t%dt\tP/(cycl/s)\n";
+    stream << "# [W]\t[J]\t[W]\t[s]\t[Js]\t[J]\t[s]\t[%J]\t[%s][(cycl)/J]\t[(cycl/s)^2/W)]\n";
 
     stream << "# " << std::fixed << std::setprecision(3) << warmup << "\n";
     stream << "# warmup done #\n";
@@ -562,13 +494,10 @@ void Eco::staticEnergyProfiler(char* const* argv, int argc)
         stream << "# " << std::fixed << std::setprecision(3) << tmp << "\n";
     }
     reference /= cfg_.numIterations_;
-    //
     resultsVec.push_back(reference);
     stream << reference << "\n";
-    auto powerLimitsVec = prepareListOfPowerCapsInMicroWatts(/*dom*/);
-    // auto loopsToDo = powerLimitsVec.size();
+    auto powerLimitsVec = prepareListOfPowerCapsInMicroWatts();
     for (auto& currentLimit : powerLimitsVec) {
-        // std::cout << loopsToDo-- << " ";
         device_->setPowerLimitInMicroWatts(currentLimit);
         auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
         auto k = getK();
@@ -597,8 +526,6 @@ void Eco::staticEnergyProfiler(char* const* argv, int argc)
             break;
         }
     }
-    // dynamic_cast<IntelDevice*>(device_.get())->restoreDefaults();
-    // device_->setPowerLimitInMicroWatts(10e6 * defaultPowerLimitInWatts_);
     stream << "# PowerCap for: min(E): "
             << std::min_element(resultsVec.begin(),
                                 resultsVec.end(),

@@ -26,7 +26,6 @@ DeviceStateAccumulator::DeviceStateAccumulator(std::shared_ptr<Device> d) :
     curr_(prev_),
     next_(prev_)
 {
-    std::cout << "[DEBUG] DeviveStateAccumulator constructor called!" << std::endl;
 }
 
 void DeviceStateAccumulator::resetState()

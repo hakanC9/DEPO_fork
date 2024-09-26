@@ -56,7 +56,6 @@ static inline void writeLimitToFile (std::string fileName, int limit) {
 
 IntelDevice::IntelDevice()
 {
-    // std::cout << "[DEBUG]: IntelDevice constructor called!\n";
     detectCPU();
     detectPackages();
     detectPowerCapsAvailability();

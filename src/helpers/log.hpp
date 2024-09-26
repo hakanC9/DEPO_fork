@@ -53,7 +53,7 @@ std::string logCurrentResultLine(
 }
 
 static inline
-std::string logCurrentGpuResultLine(
+std::string logCurrentPowerLogtLine(
     double timeInMs,
     PowAndPerfResult& curr,
     const std::optional<PowAndPerfResult> reference = std::nullopt,
@@ -67,11 +67,10 @@ std::string logCurrentGpuResultLine(
             << "\t\t" << curr.averageCorePowerInWatts_
             << "\t\t " << curr.filteredPowerOfLimitedDomainInWatts_
             << "\t\t" << curr.energyInJoules_
-            // << "\t\t" << currKernelsCount
             << "\t\t" << curr.instructionsCount_
             << std::fixed << std::setprecision(3)
-            << "\t\t" << curr.getInstrPerJoule() * 1000;
-
+            << "\t\t" << curr.getInstrPerJoule() * 1000
+            << "\t\t" << curr.getEnergyTimeProd();
     if (reference.has_value())
     {
         double currRelativeENG = curr.getEnergyPerInstr() / reference.value().getEnergyPerInstr();
@@ -80,10 +79,11 @@ std::string logCurrentGpuResultLine(
         // of division is swaped as it is basically inversion of the relative
         // dynamic metric
         double currRelativeEDP = reference.value().getEnergyTimeProd() / curr.getEnergyTimeProd();
-        sstream << "\t\t" << (std::isinf(currRelativeENG) || std::isnan(currRelativeENG) ? 1.0 : currRelativeENG)
-                << "\t\t" << (std::isinf(currRelativeEDP) || std::isnan(currRelativeEDP) ? 1.0 : currRelativeEDP)
-                << "\t\t" << curr.getInstrPerSecond()
-                << "\t\t" << curr.checkPlusMetric(reference.value(), k);
+        sstream << "\t" << curr.getInstrPerSecond()
+                << "\t" << curr.getInstrPerSecond() / reference.value().getInstrPerSecond()
+                << "\t" << (std::isinf(currRelativeENG) || std::isnan(currRelativeENG) ? 1.0 : currRelativeENG)
+                << "\t" << (std::isinf(currRelativeEDP) || std::isnan(currRelativeEDP) ? 1.0 : currRelativeEDP)
+                << "\t" << curr.checkPlusMetric(reference.value(), k);
     }
     if (noNewLine) {
         sstream << std::flush;
@@ -106,10 +106,11 @@ class Logger
         resultFile_.open(resultFileName_, std::ios::out | std::ios::trunc);
         power_bout_ = std::make_unique<BothStream>(powerFile_);
         result_bout_ = std::make_unique<BothStream>(resultFile_);
+        *power_bout_ << "#t[ms]\t\tP_cap[W]\t\tP_av[W]\t\tP_SMA[W]\t\tE[J]\t\tinstr[-]\t\tinst/En[1/J]\t\tEDP[Js]\tinstr/s\trel_ins/s\tdyn_rel_E\tdyn_rel_EDP\tdyn_EDS\n";
     }
     void logPowerLogLine(DeviceStateAccumulator& deviceState, PowAndPerfResult current, const std::optional<PowAndPerfResult> reference = std::nullopt)
     {
-        *power_bout_  << logCurrentGpuResultLine(deviceState.getTimeSinceObjectCreation(), current, reference);
+        *power_bout_  << logCurrentPowerLogtLine(deviceState.getTimeSinceObjectCreation(), current, reference);
     }
     void logToResultFile(std::stringstream& ss)
     {

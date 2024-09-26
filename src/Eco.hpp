@@ -73,12 +73,10 @@ class Eco
       TargetMetric,
       SearchType,
       int = 1);
-    void plotPowerLog(std::optional<FinalPowerAndPerfResult>);
+    void plotPowerLog(std::optional<FinalPowerAndPerfResult>, std::string = "", bool=false);
     std::string getDeviceName() const { return device_->getName(); }
 
     void staticEnergyProfiler(char* const* argv, int argc);
-
-    void runAppForEachPowercap(char* const*, BothStream&, Domain = PowerCapDomain::PKG);
 
     Eco() = delete;
     Eco(std::shared_ptr<Device>);

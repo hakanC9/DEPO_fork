@@ -84,10 +84,11 @@ void PlotBuilder::plotRelMetr(std::vector<Series> sv) {
     *gp_ << "\n";
 }
 
-void PlotBuilder::plotPowerLog(std::vector<Series> sv) {
+void PlotBuilder::plotPowerLog(std::vector<Series> sv)
+{
     initPlot(1000, 500);
-    setXlabel("Time [s]");
-    setYlabel("Power [W]");
+    setXlabel("Time [s]", 16);
+    setYlabel("Power [W]", 16);
     setLegend(Legend::OUTSIDE);
     // *gp_ << "set yrange [0:220]\n"
     //      << "set ytics 20\n";
@@ -109,6 +110,61 @@ void PlotBuilder::plotPowerLog(std::vector<Series> sv) {
         *gp_ << ", ";
     }
     *gp_ << "\n";
+}
+
+void PlotBuilder::plotPowerLogWithDynamicMetrics(std::vector<Series> top, std::vector<Series> bottom)
+{
+    initPlot(1000, 800);
+    setYlabel("Power [W]", 16);
+    setLegend(Legend::OUTSIDE);
+    *gp_ << "set multiplot layout 2, 1\n";
+    *gp_ << "set size 1, 0.55\n";
+    *gp_ << "set origin 0, 0.45\n";
+    *gp_ << "set xtics font \",18\"\n";
+    *gp_ << "set ytics font \",18\"\n";
+
+    *gp_ << "plot ";
+    for (int i = 0; i < top.size(); i++)
+    {
+        *gp_ << "\"" << top[i].inputFileName << "\" using "
+        << "($" << top[i].xSeriesID << "/1000):"
+        << top[i].ySeriesID
+        << " ls "
+        << grayStylesVec_[i % grayStylesVec_.size()]
+        << " linewidth 4 title \""
+        << top[i].seriesName
+        << "\" with lines";
+        if(i==top.size()-1) {
+            break;
+        }
+        *gp_ << ", ";
+    }
+    *gp_ << "\n";
+    setXlabel("Time [s]", 16);
+    setYlabel("Relative metric value", 16);
+    *gp_ << "unset title\n";
+    *gp_ << "set size 1, 0.45\n";
+    *gp_ << "set origin 0, 0\n";
+    *gp_ << "set xrange [0:]\n";
+    *gp_ << "set yrange [:2.0]\n";
+    *gp_ << "plot ";
+    for (int i = 0; i < bottom.size(); i++)
+    {
+        *gp_ << "\"" << bottom[i].inputFileName << "\" using "
+        << "($" << bottom[i].xSeriesID << "/1000):"
+        << bottom[i].ySeriesID
+        << " ls "
+        << grayStylesVec_[i % grayStylesVec_.size()]
+        << " linewidth 4 title \""
+        << bottom[i].seriesName
+        << "\" with lines";
+        if(i==bottom.size()-1) {
+            break;
+        }
+        *gp_ << ", ";
+    }
+    *gp_ << "\n";
+    *gp_ << "unset multiplot \n";
 }
 
 void PlotBuilder::setStyles() {
@@ -138,11 +194,11 @@ void PlotBuilder::setStyles() {
         << "\n"
         << "set style line 7  linecolor rgb \"brown\" linewidth 2.0 linetype 2 pointtype 1 pointsize 0 pointinterval 10"
         << "\n";
-    *gp_ << "set style line 111 lc rgb 'gray30' lt 1 lw 2\n"
-        << "set style line 222 lc rgb 'gray40' lt 1 lw 2\n"
-        << "set style line 333 lc rgb 'gray70' lt 1 lw 2\n"
-        << "set style line 444 lc rgb 'gray90' lt 1 lw 2\n"
-        << "set style line 555 lc rgb 'black' lt 1 lw 1.5\n"
+    *gp_ << "set style line 111 lc rgb 'gray30' lt 1 lw 1\n"
+        << "set style line 222 lc rgb 'gray40' lt 1 lw 1\n"
+        << "set style line 333 lc rgb 'gray70' lt 1 lw 1\n"
+        << "set style line 444 lc rgb 'gray90' lt 1 lw 1\n"
+        << "set style line 555 lc rgb 'black' lt 1 lw 1\n"
         << "set style fill solid 1.0 border rgb 'grey30'\n";
     *gp_ << "set style line 1111 lc rgb 'gray20' lt 1 pt 1 ps 1 lw 3\n"
         << "set style line 2222 lc rgb 'gray90' lt 1 pt 2 ps 1 lw 1.5\n"
@@ -165,7 +221,7 @@ void PlotBuilder::setLegend(Legend option) {
             break;
         case Legend::INSIDE :
         default :
-            *gp_ << "set key inside"
+            *gp_ << "set key inside center top"
                << "\n";
             break;
     }
@@ -177,9 +233,9 @@ void PlotBuilder::setPlotTitle(std::string title, int fontSize) {
        << "\"font \"," << fontSize << "\"\n";
 }
 
-void PlotBuilder::setSimpleSubtitle(std::string subtitleText, int fontSize)
+void PlotBuilder::setSimpleSubtitle(std::string subtitleText, int fontSize, float screenVerticalPosition)
 {
-    *gp_ << "set label 1 \"" << subtitleText << "\" font \"," << fontSize << "\" at screen 0.5, 0.86 center\n";
+    *gp_ << "set label 1 \"" << subtitleText << "\" font \"," << fontSize << "\" at screen 0.5, " << screenVerticalPosition << " center\n";
 }
 
 void PlotBuilder::setXlabel(std::string xLabel, int fontSize) {

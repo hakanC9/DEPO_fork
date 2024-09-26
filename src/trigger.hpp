@@ -45,13 +45,11 @@ class Trigger
         {
           type_ = cfg.doWaitPhase_ ? TriggerType::SINGLE_TUNING_WITH_WAIT : TriggerType::SINGLE_IMMEDIATE_TUNING;
         }
-        // std::cout << "[DEBUG] calling Trigger constructor\n";
       }
     ~Trigger() = default;
 
     bool isDeviceReadyForTuning() const
     {
-        // std::cout << "[DEBUG] calling Trigger isDeviceReadyForTuning\n";
       switch(type_)
       {
         case TriggerType::SINGLE_TUNING_WITH_WAIT:
@@ -68,13 +66,11 @@ class Trigger
 
     double getCurrentFilteredPowerInWatts() const
     {
-        // std::cout << "[DEBUG] calling Trigger getCurrentFilteredPowerInWatts\n";
       return filter_.getSMA();
     }
 
     void appendPowerSampleToSmaFilter(double powerInWatts)
     {
-        // std::cout << "[DEBUG] calling Trigger appendPowerSampleToSmaFilter " << powerInWatts << "\n";
 
       filter_.storeDataPoint(preFilter_.getSMA());
       preFilter_.storeDataPoint(powerInWatts);
@@ -84,7 +80,6 @@ class Trigger
     {
       hasDeviceReportedAnyComputeActivityThroughPerfCounter_ =
           hasDeviceReportedAnyComputeActivityThroughPerfCounter_ || computeActivityOfDeviceCondition;
-      // std::cout << "[DEBUG] updated flag to " << hasDeviceReportedAnyComputeActivityThroughPerfCounter_ << std::endl;
     }
 
     bool isTuningPeriodic() const

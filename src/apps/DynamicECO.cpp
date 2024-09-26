@@ -212,28 +212,30 @@ int main (int argc, char *argv[])
 
     std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
     std::stringstream ssout;
-    ssout << "# ";
+    std::stringstream applicationCommand;
     for (int i=1; i<argc; i++) {
-        ssout <<  argv[i] << " ";
+        applicationCommand <<  argv[i] << " ";
         std::cout <<  argv[i] << " ";
     }
-    ssout << "\n";
+    ssout << "# " << applicationCommand.str() << "\n";
 
     FinalPowerAndPerfResult result;
+    bool printPowerLogWithDynamicMetrics = true;
     if (optionsMap.count("no-tuning"))
     {
         result = eco->runAppWithSampling(argv, argc);
+        printPowerLogWithDynamicMetrics = false;
     }
     else
     {
         result = eco->runAppWithSearch(argv, metric, search, argc);
     }
     ssout << std::fixed << std::setprecision(3)
-         << "#Energy[J]\ttime[s]\tPower[W]\n"
+         << "# Energy[J]\ttime[s]\tPower[W]\n"
          << result.energy << "\t" << result.time_.totalTime_ << "\t" << result.pkgPower <<"\n";
 
     eco->logToResultFile(ssout);
-    eco->plotPowerLog(result);
+    eco->plotPowerLog(result, applicationCommand.str(), printPowerLogWithDynamicMetrics);
 
     if (gpuID.has_value())
     {

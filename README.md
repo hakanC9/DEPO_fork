@@ -95,9 +95,11 @@ Note: the power limiting feature requires root privileges in Ubuntu OS, hence be
 Above command shall run exemplary FFT application with StEP for CPU and produce
 as a result `cpu_experiment_*` folder with `.csv` logs and visualised `.png`
 power log similar to below one:
+
 ![exemplary power log step](power_log_step.png)
 
 and StEP tool results visualised as below:
+
 ![exemplary step result](result_step.png)
 ![exemplary step result et](result_step_et.png)
 
@@ -106,32 +108,39 @@ and StEP tool results visualised as below:
 
 Above command shall run exemplary FFT application with DEPO and produce
 as a result `cpu_experiment_*` folder with `.csv` logs and visualised `.png`
-power log similar to below one:
+power log. See details in the next section.
 
-![exemplary power log depo](power_log_depo.png)
-
-# DEPO configuration
+### DEPO configuration
 
 One may modify the execution parameters in `config.yaml` file or with command line parameters which may be listed
 with `DEPO --help`.
 
 The parameters in the `config.yaml` file are documented in comments.
 
-## Available search modes in DEPO
+### Available search modes in DEPO
 In DEPO there are several optimization modes available:
 1. **Just power sampling**, which launches the application and monitors and reports power and energy consumption when finished, available when `--no-tuning` parameter is passed.
+![exemplary depo result sampling](docs/result_depo_sampling.png)
 2. **Single immediate tuning**, which launches the Tuing Phase as soon as the optimized device activity is detected, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 0` and `doWaitPhase: 0`.
+![exemplary depo result single immediate](docs/result_depo_single_immediate.png)
 3. **Single tuning with wait**, which launches Tuing Phase after SMA based Power filter detects stable average power consumption, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 0` and `doWaitPhase: 1`.
+![exemplary depo result single wait](docs/result_depo_single_wait.png)
 4. **Periodic immediate tuning**, which launches the Tuning Phase as soon as the optimized device activity is detected and repeats the tuning phase after a period defined in seconds with `repeatTuningPeriodInSec: 30` (for 30s execution with selected power cap before next Tuning Phase). Assuming `doWaitPhase: 0`.
+![exemplary depo result periodic immediate](docs/result_depo_periodic_immediate.png)
 5. **Periodic tuning with wait**, which adds Wait Phase before first Tuning Phase, available with `config.yaml` parameters set to: `repeatTuningPeriodInSec: 30` (for 30s period before next Tuing Phase) and `doWaitPhase: 1`.
+![exemplary depo result periodic wait](docs/result_depo_periodic_wait.png)
 
-## Experimental asynchronous Tuning in DEPO
+#### Linear Search algorithm
+For any mode one may run DEPO with Linear Search algorithm as well:
+![exemplary depo result periodic immediate ls](docs/result_depo_ls_periodic.png)
+
+### Experimental asynchronous Tuning in DEPO
 
 There is also a way of triggering a tuning phase on demand with external signal.
 For now it works with application executed in any of available DEPO modes besides "just sampling". It will be fixed soon.
 The feature allows triggering the next Tuning Phase with external trigger using specific file modification.
 All one has to do to trigger asynchronously the next Tuing Phase is to execute `touch /tmp/trigger_file` during execution of DEPO with selected application.
-
+![exemplary depo result with external trigger](docs/result_depo_external_trigger.png)
 
 # Adding support for other devices
 If one wish to add support for other CPU vendors, other GPU vendors or other compute devices they have to make sure that the target device provides:
