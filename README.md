@@ -152,7 +152,7 @@ The new HW support may be added by preparing a `NewDevice` class inherited from 
 Next step would be adding the `NewDevice` option in the DEPO application source file, i.e., `src/apps/DynamicECO.cpp` or writing own DEPO program with just the `NewDevice` class.
 
 ### Current classes and dependencies diagram
-![DEPO class diagram](src/depo_class_diagram.png)
+![DEPO class diagram](docs/depo_class_diagram.png)
 
 # Related works
 If you find this code usefull please cite any of our papers which contributed to this codebase:
