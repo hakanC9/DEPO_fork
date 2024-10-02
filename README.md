@@ -89,22 +89,22 @@ sudo apt install libyaml-cpp-dev
 Note: the power limiting feature requires root privileges in Ubuntu OS, hence below commands are executed as `sudo` user.
 
 ## StEP
-`sudo ./build/StEP ./minibenchmarks/openmp/fft 16384 25`
+`sudo ./build/apps/StEP/StEP ./minibenchmarks/openmp/fft 16384 25`
 
 
 Above command shall run exemplary FFT application with StEP for CPU and produce
 as a result `cpu_experiment_*` folder with `.csv` logs and visualised `.png`
 power log similar to below one:
 
-![exemplary power log step](power_log_step.png)
+![exemplary power log step](docs/power_log_step.png)
 
 and StEP tool results visualised as below:
 
-![exemplary step result](result_step.png)
-![exemplary step result et](result_step_et.png)
+![exemplary step result](docs/result_step.png)
+![exemplary step result et](docs/result_step_et.png)
 
 ## DEPO
-`sudo ./build/DEPO --ls --en ./minibenchmarks/openmp/fft 1024 300`
+`sudo ./build/apps/DEPO/DEPO --ls --en ./minibenchmarks/openmp/fft 1024 300`
 
 Above command shall run exemplary FFT application with DEPO and produce
 as a result `cpu_experiment_*` folder with `.csv` logs and visualised `.png`
@@ -152,7 +152,7 @@ The new HW support may be added by preparing a `NewDevice` class inherited from 
 Next step would be adding the `NewDevice` option in the DEPO application source file, i.e., `src/apps/DynamicECO.cpp` or writing own DEPO program with just the `NewDevice` class.
 
 ### Current classes and dependencies diagram
-![DEPO class diagram](src/depo_class_diagram.png)
+![DEPO class diagram](docs/depo_class_diagram.png)
 
 # Related works
 If you find this code usefull please cite any of our papers which contributed to this codebase:
