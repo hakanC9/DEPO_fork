@@ -23,6 +23,7 @@ ExternalProject_Add(pcm
   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/pcm-src"
   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/pcm-src"
   CONFIGURE_COMMAND ""
+  UPDATE_COMMAND    git checkout Makefile
   PATCH_COMMAND     git apply ${CMAKE_CURRENT_LIST_DIR}/dont_use_perf_in_pcm.patch
   BUILD_COMMAND     make lib
   INSTALL_COMMAND   ""
