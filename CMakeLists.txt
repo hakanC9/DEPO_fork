@@ -6,6 +6,10 @@ include_directories(/usr/local/cuda/include)
 include(CMakeLists.txt.in)
 find_package(yaml-cpp REQUIRED)
 
+if(NOT TARGET spdlog)
+    find_package(spdlog REQUIRED)
+endif()
+
 add_subdirectory(lib/eco)
 
 add_dependencies(
@@ -27,6 +31,7 @@ set(COMMON_LIBS
     nvidia-ml
     cuda
     yaml-cpp
+    spdlog::spdlog
     )
 
 add_subdirectory(apps/DEPO)
