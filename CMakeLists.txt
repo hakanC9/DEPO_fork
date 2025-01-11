@@ -82,6 +82,9 @@ tests/test_xpu.cpp
 )
 target_include_directories(test_xpu PRIVATE ${CMAKE_SOURCE_DIR}/lib/eco/include)
 target_link_libraries(test_xpu eco ${COMMON_LIBS})
+if(UNIX)
+    target_link_libraries(test_xpu dl)
+endif()
 
 add_dependencies(
     test_xpu
@@ -90,6 +93,10 @@ add_dependencies(
     )
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.yaml
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
+add_custom_command(TARGET test_xpu PRE_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${CMAKE_SOURCE_DIR}/tests/gemm.spv
+                        ${CMAKE_BINARY_DIR}/gemm.spv)
 add_test(
     NAME test_xpu
     COMMAND test_xpu

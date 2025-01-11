@@ -96,6 +96,10 @@ void XPUDevice::initL0()
     {
         setenv("ZES_ENABLE_SYSMAN", "1", 1);
     }
+    if (std::getenv("ZET_ENABLE_METRICS") == nullptr)
+    {
+        setenv("ZET_ENABLE_METRICS", "1", 1);
+    }
 
     auto result = zeInit(ZE_INIT_FLAG_GPU_ONLY);
     if (result == ZE_RESULT_SUCCESS)
@@ -303,6 +307,9 @@ XPUDevice::XPUDevice(int devID, bool useAmperes)
             this->minLimitValue = std::get<0>(minMaxPower);
             this->maxLimitValue = std::get<1>(minMaxPower);
         }
+
+        metric_collector_ =
+            ZeMetricCollector::Create((ze_driver_handle_t)driver, (ze_device_handle_t)device, "ComputeBasic");
     }
     catch (const std::exception& e)
     {
@@ -506,12 +513,9 @@ void XPUDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW)
     }
 }
 
-// TODO: Damian will do it
 void XPUDevice::reset()
 {
-    //    std::ofstream kernelCounterFile;
-    //    kernelCounterFile.open("kernels_count", std::ios::out |
-    //    std::ios::trunc); kernelCounterFile << "0"; kernelCounterFile.close();
+    metric_collector_->resetAccumulatedMetrics();
 }
 
 double XPUDevice::getCurrentPowerInWatts(std::optional<Domain>) const
@@ -554,12 +558,5 @@ void XPUDevice::triggerPowerApiSample()
 
 unsigned long long int XPUDevice::getPerfCounter() const
 {
-    int64_t kernelsCountTmp {-1};
-    //    do
-    //    {
-    //        kernelsCountTmp = readValueFromFile("./kernels_count");
-    //    }
-    //    while (kernelsCountTmp == -1);
-
-    return static_cast<unsigned long long>(kernelsCountTmp);
+    return metric_collector_->getAccumulatedMetricsSinceLastReset();
 }
