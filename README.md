@@ -119,10 +119,6 @@ Note: the power limiting feature requires root privileges in Ubuntu OS, hence be
 ## StEP
 `sudo ./build/apps/StEP/StEP ./minibenchmarks/openmp/fft 16384 25`
 
-### Using Amperes instead of watts to set power cap (XPU)
-You can use Amperes instead of Watts to set power cap for XPU. To do so, you need to set the `USE_AMPERES` environment variable to `1` before running the application. For example:
-`sudo USE_AMPERES=1 ./build/apps/StEP/StEP ./minibenchmarks/openmp/fft 16384 25`
-
 
 Above command shall run exemplary FFT application with StEP for CPU and produce
 as a result `cpu_experiment_*` folder with `.csv` logs and visualised `.png`
@@ -134,6 +130,10 @@ and StEP tool results visualised as below:
 
 ![exemplary step result](docs/result_step.png)
 ![exemplary step result et](docs/result_step_et.png)
+
+### Using power capping  instead of current capping for Intel XPU
+By default Current capping is used for XPU. In case you want to test power capping, you need to set the `USE_AMPERES` environment variable to `0` before running the application. For example:
+`sudo USE_AMPERES=0 ./build/apps/StEP/StEP <cmdline of your Intel XPU workload>`
 
 ## DEPO
 `sudo ./build/apps/DEPO/DEPO --ls --en ./minibenchmarks/openmp/fft 1024 300`
