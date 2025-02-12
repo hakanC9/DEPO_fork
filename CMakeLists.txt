@@ -57,7 +57,10 @@ else()
                )
 endif()
 
-#add_subdirectory(apps/DEPO)  # TODO: Enable
+#TODO: Add suport in DEPO for XPU
+if(NOT DEFINED WITH_XPU OR WITH_XPU STREQUAL "OFF" OR WITH_XPU STREQUAL "0")
+    add_subdirectory(apps/DEPO)
+endif()
 add_subdirectory(apps/StEP)
 add_subdirectory(apps/simple)
 add_subdirectory(apps/experimental)

@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
     watchdog << "0";
     watchdog.close();
 
-    bool isGpu = false;
+    bool isGpuOrXpu = false;
     int  gpuID = -1;
     if (argc >= 1)
     {
@@ -49,30 +49,34 @@ int main(int argc, char* argv[])
                 argv[i] = argv[i + 1];
             }
             argc--;
-            isGpu = true;
+            isGpuOrXpu = true;
         }
     }
 
-    bool        useAmperes = true;
-    const char* env_p      = std::getenv("USE_AMPERES");
-
-    if (env_p != nullptr)
-    {
-        std::string env_value(env_p);
-        if (env_value == "0" || env_value == "False" || env_value == "false")
-        {
-            useAmperes = false;
-        }
-    }
 
     std::shared_ptr<Device> device;
-    if (!isGpu)
+    if (!isGpuOrXpu)
     {
         device = std::make_shared<IntelDevice>();
     }
     else
     {
+        #ifdef WITH_XPU
+        bool        useAmperes = true;
+        const char* env_p      = std::getenv("USE_AMPERES");
+
+        if (env_p != nullptr)
+        {
+            std::string env_value(env_p);
+            if (env_value == "0" || env_value == "False" || env_value == "false")
+            {
+                useAmperes = false;
+            }
+        }
         device = std::make_shared<TargetDevice>(gpuID, useAmperes);
+        #else //GPU
+        device = std::make_shared<TargetDevice>(gpuID);
+        #endif
     }
     std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
 

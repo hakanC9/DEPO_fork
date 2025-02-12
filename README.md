@@ -98,11 +98,10 @@ cmake ../ -DWITH_XPU=ON -DLIBZE_LOADER_PATH=<custom directory with libze_loader.
 #### Testing
 To test your configuration you can run unit tests (with super user priviliges):
 ```bash
-# ctest -V
+sudo ctest -V
 ```
 or with logging all messages to console (where log_level is: info/warn/debug/trace/err/critical)
 ```bash
-# sudo SPDLOG_LEVEL=log_level ctest -V
 sudo SPDLOG_LEVEL=trace ctest -V
 ```
 
