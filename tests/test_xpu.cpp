@@ -214,6 +214,7 @@ bool test_xpu_power_limit_resetting(int devID)
     }
     // After setting sustained power limit we will create now xpu_device with power limit and already set sustained
     // power limit should be reverted to max available value
+    xpu_device.reset();
     xpu_device          = std::make_unique<XPUDevice>(devID, true);
     auto sustainedLimit = xpu_device->getPowerLimitSustained();
 
@@ -297,7 +298,7 @@ bool test_xpu_reset_and_perf_counter(int devID)
         return false;
     }
     run_gemm(kernel, device, context, a, b, c, mat_size);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     if (const auto cnt = xpu_device->getPerfCounter(); cnt == 0)
     {
         LOG_ERROR("Expected perf counter to be > 0, but got 0");
@@ -314,7 +315,7 @@ bool test_xpu_reset_and_perf_counter(int devID)
         return false;
     }
     run_gemm(kernel, device, context, a, b, c, mat_size);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     if (const auto cnt = xpu_device->getPerfCounter(); cnt == 0)
     {
         LOG_ERROR("Expected perf counter to be > 0, but got 0");
