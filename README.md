@@ -17,6 +17,7 @@ So far the repository supports Intel based CPUs and NVIDIA GPUs.
 This tool is designed for static exploration of the energy characteristic of the given Device.
 The device types supported at the moment are:
 - Intel CPU
+- Intel XPU (Ponte Vecchio)
 - NVIDIA GPU
 
 The tool is designed for automatic examination of power limits impact on energy consumption and performance
@@ -78,6 +79,32 @@ cmake ..
 make
 ```
 
+### Building for Intel XPU
+#### Make build directory
+```
+mkdir build
+cd build
+```
+#### Configure
+```
+cmake -DWITH_XPU=ON ..
+```
+###### If you have Level Zero installed in custom location, you can specify it with LIBZE_LOADER_PATH:
+
+```
+cmake ../ -DWITH_XPU=ON -DLIBZE_LOADER_PATH=<custom directory with libze_loader.so>
+```
+
+#### Testing
+To test your configuration you can run unit tests (with super user priviliges):
+```bash
+sudo ctest -V
+```
+or with logging all messages to console (where log_level is: info/warn/debug/trace/err/critical)
+```bash
+sudo SPDLOG_LEVEL=trace ctest -V
+```
+
 # Known dependencies
 ```
 sudo apt update && sudo apt install build-essential cmake gnuplot
@@ -102,6 +129,10 @@ and StEP tool results visualised as below:
 
 ![exemplary step result](docs/result_step.png)
 ![exemplary step result et](docs/result_step_et.png)
+
+### Using power capping  instead of current capping for Intel XPU
+By default Current capping is used for XPU. In case you want to test power capping, you need to set the `USE_AMPERES` environment variable to `0` before running the application. For example:
+`sudo USE_AMPERES=0 ./build/apps/StEP/StEP <cmdline of your Intel XPU workload>`
 
 ## DEPO
 `sudo ./build/apps/DEPO/DEPO --ls --en ./minibenchmarks/openmp/fft 1024 300`
@@ -161,8 +192,8 @@ If you find this code usefull please cite any of our papers which contributed to
 
         @INPROCEEDINGS{9188149,
         author={Krzywaniak, Adam and Czarnul, Pawel and Proficz, Jerzy},
-        booktitle={2019 International Conference on High Performance Computing & Simulation (HPCS)}, 
-        title={Extended investigation of performance-energy trade-offs under power capping in HPC environments}, 
+        booktitle={2019 International Conference on High Performance Computing & Simulation (HPCS)},
+        title={Extended investigation of performance-energy trade-offs under power capping in HPC environments},
         year={2019},
         pages={440-447},
         doi={10.1109/HPCS48598.2019.9188149}

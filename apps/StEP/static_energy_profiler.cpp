@@ -15,42 +15,68 @@
 */
 
 #include "eco.hpp"
-#include "devices/cuda_device.hpp"
 #include "devices/intel_device.hpp"
 #include "plot_builder.hpp"
+#ifdef WITH_XPU
+#include "devices/xpu_device.hpp"
+const char devcmd[] = "--xpu=";
+using TargetDevice  = XPUDevice;
+#else
+#include "devices/cuda_device.hpp"
+const char devcmd[] = "--gpu=";
+using TargetDevice  = CudaDevice;
+#endif
 
-int main (int argc, char *argv[]) {
+#include <cstdlib>
 
+int main(int argc, char* argv[])
+{
     // temporary fix
-    std::ofstream watchdog ("/proc/sys/kernel/nmi_watchdog", std::ios::out | std::ios::trunc);
-	watchdog << "0";
-	watchdog.close();
+    std::ofstream watchdog("/proc/sys/kernel/nmi_watchdog", std::ios::out | std::ios::trunc);
+    watchdog << "0";
+    watchdog.close();
 
-    bool isGpu = false;
-    int gpuID = -1;
+    bool isGpuOrXpu = false;
+    int  gpuID = -1;
     if (argc >= 1)
     {
-        if(std::string(argv[1]).substr(0,6) == "--gpu=")
+        if (std::string(argv[1]).substr(0, 6) == devcmd)
         {
-            gpuID = stoi(std::string(argv[1]).substr(6,1));
+            gpuID = stoi(std::string(argv[1]).substr(6, 1));
             // remove the --gpu flag from 1st arg
-            for (int i = 1; i < argc -1; i++)
+            for (int i = 1; i < argc - 1; i++)
             {
-                argv[i] = argv[i+1];
+                argv[i] = argv[i + 1];
             }
             argc--;
-            isGpu = true;
+            isGpuOrXpu = true;
         }
     }
 
+
     std::shared_ptr<Device> device;
-    if(!isGpu)
+    if (!isGpuOrXpu)
     {
         device = std::make_shared<IntelDevice>();
     }
     else
     {
-        device = std::make_shared<CudaDevice>(gpuID);
+        #ifdef WITH_XPU
+        bool        useAmperes = true;
+        const char* env_p      = std::getenv("USE_AMPERES");
+
+        if (env_p != nullptr)
+        {
+            std::string env_value(env_p);
+            if (env_value == "0" || env_value == "False" || env_value == "false")
+            {
+                useAmperes = false;
+            }
+        }
+        device = std::make_shared<TargetDevice>(gpuID, useAmperes);
+        #else //GPU
+        device = std::make_shared<TargetDevice>(gpuID);
+        #endif
     }
     std::unique_ptr<Eco> eco = std::make_unique<Eco>(device);
 
@@ -60,23 +86,19 @@ int main (int argc, char *argv[]) {
 
     // Plot result file automatically
     std::string imgFileName = eco->getResultFileName();
-    PlotBuilder p(imgFileName.replace(imgFileName.end() - 4,
-                                      imgFileName.end(),
-                                      "_Et.png"));
-	p.setPlotTitle(eco->getDeviceName());
+    PlotBuilder p(imgFileName.replace(imgFileName.end() - 4, imgFileName.end(), "_Et.png"));
+    p.setPlotTitle(eco->getDeviceName());
     std::cout << "Processing " << eco->getResultFileName() << " file...\n";
-	p.plotEPet(eco->getResultFileName());
+    p.plotEPet(eco->getResultFileName());
     p.submitPlot();
 
     // Plot result file automatically
     std::string imgFileName2 = eco->getResultFileName();
-    PlotBuilder p2(imgFileName2.replace(imgFileName2.end() - 3,
-                                      imgFileName2.end(),
-                                      "png"));
-	p2.setPlotTitle(eco->getDeviceName());
+    PlotBuilder p2(imgFileName2.replace(imgFileName2.end() - 3, imgFileName2.end(), "png"));
+    p2.setPlotTitle(eco->getDeviceName());
     std::cout << "Processing " << eco->getResultFileName() << " file...\n";
-	p2.plotEPall(eco->getResultFileName());
+    p2.plotEPall(eco->getResultFileName());
     p2.submitPlot();
 
-	return 0;
+    return 0;
 }
