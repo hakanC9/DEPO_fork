@@ -15,6 +15,7 @@
 */
 
 #include "devices/xpu_device.hpp"
+#include "perf_counter_interfaces/xpu_perf_counter.hpp"
 #include "../../../src/logging.hpp"
 
 #include <cstdlib>
@@ -24,77 +25,16 @@
 static constexpr double MICRO_W = 1e6;
 static constexpr double MILI_W  = 1e3;
 
-const std::map<zes_power_domain_t, std::string> domainTypeMap = []
-{
-    std::map<zes_power_domain_t, std::string> map;
-
-    map[ZES_POWER_DOMAIN_UNKNOWN]      = "ZES_POWER_DOMAIN_UNKNOWN";
-    map[ZES_POWER_DOMAIN_CARD]         = "ZES_POWER_DOMAIN_CARD";
-    map[ZES_POWER_DOMAIN_PACKAGE]      = "ZES_POWER_DOMAIN_PACKAGE";
-    map[ZES_POWER_DOMAIN_STACK]        = "ZES_POWER_DOMAIN_STACK";
-    map[ZES_POWER_DOMAIN_GPU]          = "ZES_POWER_DOMAIN_GPU";
-    map[ZES_POWER_DOMAIN_FORCE_UINT32] = "ZES_POWER_DOMAIN_FORCE_UINT32";
-    return map;
-}();
-
-const std::map<ze_result_t, std::string> errorMap = []
-{
-    std::map<ze_result_t, std::string> map;
-    map[ZE_RESULT_SUCCESS]                              = "ZE_RESULT_SUCCESS";
-    map[ZE_RESULT_NOT_READY]                            = "ZE_RESULT_NOT_READY";
-    map[ZE_RESULT_ERROR_DEVICE_LOST]                    = "ZE_RESULT_ERROR_DEVICE_LOST";
-    map[ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY]             = "ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY";
-    map[ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY]           = "ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY";
-    map[ZE_RESULT_ERROR_MODULE_BUILD_FAILURE]           = "ZE_RESULT_ERROR_MODULE_BUILD_FAILURE";
-    map[ZE_RESULT_ERROR_MODULE_LINK_FAILURE]            = "ZE_RESULT_ERROR_MODULE_LINK_FAILURE";
-    map[ZE_RESULT_ERROR_DEVICE_REQUIRES_RESET]          = "ZE_RESULT_ERROR_DEVICE_REQUIRES_RESET";
-    map[ZE_RESULT_ERROR_DEVICE_IN_LOW_POWER_STATE]      = "ZE_RESULT_ERROR_DEVICE_IN_LOW_POWER_STATE";
-    map[ZE_RESULT_EXP_ERROR_DEVICE_IS_NOT_VERTEX]       = "ZE_RESULT_EXP_ERROR_DEVICE_IS_NOT_VERTEX";
-    map[ZE_RESULT_EXP_ERROR_VERTEX_IS_NOT_DEVICE]       = "ZE_RESULT_EXP_ERROR_VERTEX_IS_NOT_DEVICE";
-    map[ZE_RESULT_EXP_ERROR_REMOTE_DEVICE]              = "ZE_RESULT_EXP_ERROR_REMOTE_DEVICE";
-    map[ZE_RESULT_ERROR_INSUFFICIENT_PERMISSIONS]       = "ZE_RESULT_ERROR_INSUFFICIENT_PERMISSIONS";
-    map[ZE_RESULT_ERROR_NOT_AVAILABLE]                  = "ZE_RESULT_ERROR_NOT_AVAILABLE";
-    map[ZE_RESULT_ERROR_DEPENDENCY_UNAVAILABLE]         = "ZE_RESULT_ERROR_DEPENDENCY_UNAVAILABLE";
-    map[ZE_RESULT_WARNING_DROPPED_DATA]                 = "ZE_RESULT_WARNING_DROPPED_DATA";
-    map[ZE_RESULT_ERROR_UNINITIALIZED]                  = "ZE_RESULT_ERROR_UNINITIALIZED";
-    map[ZE_RESULT_ERROR_UNSUPPORTED_VERSION]            = "ZE_RESULT_ERROR_UNSUPPORTED_VERSION";
-    map[ZE_RESULT_ERROR_UNSUPPORTED_FEATURE]            = "ZE_RESULT_ERROR_UNSUPPORTED_FEATURE";
-    map[ZE_RESULT_ERROR_INVALID_ARGUMENT]               = "ZE_RESULT_ERROR_INVALID_ARGUMENT";
-    map[ZE_RESULT_ERROR_INVALID_NULL_HANDLE]            = "ZE_RESULT_ERROR_INVALID_NULL_HANDLE";
-    map[ZE_RESULT_ERROR_HANDLE_OBJECT_IN_USE]           = "ZE_RESULT_ERROR_HANDLE_OBJECT_IN_USE";
-    map[ZE_RESULT_ERROR_INVALID_NULL_POINTER]           = "ZE_RESULT_ERROR_INVALID_NULL_POINTER";
-    map[ZE_RESULT_ERROR_INVALID_SIZE]                   = "ZE_RESULT_ERROR_INVALID_SIZE";
-    map[ZE_RESULT_ERROR_UNSUPPORTED_SIZE]               = "ZE_RESULT_ERROR_UNSUPPORTED_SIZE";
-    map[ZE_RESULT_ERROR_UNSUPPORTED_ALIGNMENT]          = "ZE_RESULT_ERROR_UNSUPPORTED_ALIGNMENT";
-    map[ZE_RESULT_ERROR_INVALID_SYNCHRONIZATION_OBJECT] = "ZE_RESULT_ERROR_INVALID_SYNCHRONIZATION_OBJECT";
-    map[ZE_RESULT_ERROR_INVALID_ENUMERATION]            = "ZE_RESULT_ERROR_INVALID_ENUMERATION";
-    map[ZE_RESULT_ERROR_UNSUPPORTED_ENUMERATION]        = "ZE_RESULT_ERROR_UNSUPPORTED_ENUMERATION";
-    map[ZE_RESULT_ERROR_UNSUPPORTED_IMAGE_FORMAT]       = "ZE_RESULT_ERROR_UNSUPPORTED_IMAGE_FORMAT";
-    map[ZE_RESULT_ERROR_INVALID_NATIVE_BINARY]          = "ZE_RESULT_ERROR_INVALID_NATIVE_BINARY";
-    map[ZE_RESULT_ERROR_INVALID_GLOBAL_NAME]            = "ZE_RESULT_ERROR_INVALID_GLOBAL_NAME";
-    map[ZE_RESULT_ERROR_INVALID_KERNEL_NAME]            = "ZE_RESULT_ERROR_INVALID_KERNEL_NAME";
-    map[ZE_RESULT_ERROR_INVALID_FUNCTION_NAME]          = "ZE_RESULT_ERROR_INVALID_FUNCTION_NAME";
-    map[ZE_RESULT_ERROR_INVALID_GROUP_SIZE_DIMENSION]   = "ZE_RESULT_ERROR_INVALID_GROUP_SIZE_DIMENSION";
-    map[ZE_RESULT_ERROR_INVALID_GLOBAL_WIDTH_DIMENSION] = "ZE_RESULT_ERROR_INVALID_GLOBAL_WIDTH_DIMENSION";
-    map[ZE_RESULT_ERROR_INVALID_KERNEL_ARGUMENT_INDEX]  = "ZE_RESULT_ERROR_INVALID_KERNEL_ARGUMENT_INDEX";
-    map[ZE_RESULT_ERROR_INVALID_KERNEL_ARGUMENT_SIZE]   = "ZE_RESULT_ERROR_INVALID_KERNEL_ARGUMENT_SIZE";
-    map[ZE_RESULT_ERROR_INVALID_KERNEL_ATTRIBUTE_VALUE] = "ZE_RESULT_ERROR_INVALID_KERNEL_ATTRIBUTE_VALUE";
-    map[ZE_RESULT_ERROR_INVALID_MODULE_UNLINKED]        = "ZE_RESULT_ERROR_INVALID_MODULE_UNLINKED";
-    map[ZE_RESULT_ERROR_INVALID_COMMAND_LIST_TYPE]      = "ZE_RESULT_ERROR_INVALID_COMMAND_LIST_TYPE";
-    map[ZE_RESULT_ERROR_OVERLAPPING_REGIONS]            = "ZE_RESULT_ERROR_OVERLAPPING_REGIONS";
-    map[ZE_RESULT_WARNING_ACTION_REQUIRED]              = "ZE_RESULT_WARNING_ACTION_REQUIRED";
-    map[ZE_RESULT_ERROR_UNKNOWN]                        = "ZE_RESULT_ERROR_UNKNOWN";
-    map[ZE_RESULT_FORCE_UINT32]                         = "ZE_RESULT_FORCE_UINT32";
-
-    return map;
-}();
-
 void XPUDevice::initL0()
 {
     // If ZES_ENABLE_SYSMAN is not set then make it set
     if (std::getenv("ZES_ENABLE_SYSMAN") == nullptr)
     {
         setenv("ZES_ENABLE_SYSMAN", "1", 1);
+    }
+    if (std::getenv("ZET_ENABLE_METRICS") == nullptr)
+    {
+        setenv("ZET_ENABLE_METRICS", "1", 1);
     }
 
     auto result = zeInit(ZE_INIT_FLAG_GPU_ONLY);
@@ -303,6 +243,9 @@ XPUDevice::XPUDevice(int devID, bool useAmperes)
             this->minLimitValue = std::get<0>(minMaxPower);
             this->maxLimitValue = std::get<1>(minMaxPower);
         }
+
+        metric_collector_ =
+            ZeMetricCollector::Create((ze_driver_handle_t)driver, (ze_device_handle_t)device, "ComputeBasic");
     }
     catch (const std::exception& e)
     {
@@ -506,12 +449,9 @@ void XPUDevice::setPowerLimitInMicroWatts(unsigned long limitInMicroW)
     }
 }
 
-// TODO: Damian will do it
 void XPUDevice::reset()
 {
-    //    std::ofstream kernelCounterFile;
-    //    kernelCounterFile.open("kernels_count", std::ios::out |
-    //    std::ios::trunc); kernelCounterFile << "0"; kernelCounterFile.close();
+    metric_collector_->resetAccumulatedMetrics();
 }
 
 double XPUDevice::getCurrentPowerInWatts(std::optional<Domain>) const
@@ -554,12 +494,5 @@ void XPUDevice::triggerPowerApiSample()
 
 unsigned long long int XPUDevice::getPerfCounter() const
 {
-    int64_t kernelsCountTmp {-1};
-    //    do
-    //    {
-    //        kernelsCountTmp = readValueFromFile("./kernels_count");
-    //    }
-    //    while (kernelsCountTmp == -1);
-
-    return static_cast<unsigned long long>(kernelsCountTmp);
+    return metric_collector_->getAccumulatedMetricsSinceLastReset();
 }

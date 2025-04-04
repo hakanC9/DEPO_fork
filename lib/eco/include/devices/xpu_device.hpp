@@ -37,6 +37,7 @@
 #include "logging/log.hpp"
 #include "device_state.hpp"
 #include "devices/abstract_device.hpp"
+#include "perf_counter_interfaces/xpu_perf_counter.hpp"
 
 #include <level_zero/ze_api.h>
 #include <level_zero/zes_api.h>
@@ -57,6 +58,13 @@ class XPUDevice : public Device
 {
 public:
     XPUDevice(int devID = 0, bool useAmperes = true);
+    ~XPUDevice()
+    {
+        if (metric_collector_ != nullptr)
+        {
+            metric_collector_->DisableCollection();
+        }
+    }
 
     double getPowerLimitInWatts() const override;
     double getPowerLimitSustained() const;
@@ -104,4 +112,5 @@ private:
     // energy_samples[1] -- newer sample
     // energy_sample[0] -- older sample
     zes_power_energy_counter_t energy_samples[2];
+    ZeMetricCollector*         metric_collector_ = nullptr;
 };
