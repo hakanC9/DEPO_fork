@@ -106,12 +106,12 @@ class Eco
     WatchdogStatus readWatchdog();
     std::vector<int> prepareListOfPowerCapsInMicroWatts(/*Domain = PowerCapDomain::PKG*/);
     void singleAppRunAndPowerSample(char* const*);
-    FinalPowerAndPerfResult multipleAppRunAndPowerSample(char* const*, int);
+    FinalPowerAndPerfResult multipleAppRunAndPowerSample(char* const*, int, std::optional<std::reference_wrapper<std::stringstream>> = std::nullopt);
     PowAndPerfResult checkPowerAndPerformance(int);
     void reportResult(double = 0.0, double = 0.0);
     void waitForTuningTrigger(int&, int);
     void execPhase(int, int&, int, PowAndPerfResult&);
-    void mainAppProcess(char* const*, int&);
+    int mainAppProcess(char* const*, int&);
     int& adjustHighPowLimit(PowAndPerfResult, int&);
 
 };

@@ -116,30 +116,61 @@ void Eco::singleAppRunAndPowerSample(char* const* argv) {
     devStateGlobal_.resetState();
 
     int fd = open("EP_stdout.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
-    if (fd < 0) { perror("open"); abort(); }
-    pid_t childProcId = fork();
-    if (childProcId >= 0) { //fork successful
-        if (childProcId == 0) { // child process
-            mainAppProcess(argv, fd);
-        }
-        else { // parent process
-            int status = 1;
-            waitpid(childProcId, &status, WNOHANG);
-            if(cfg_.powerSampleOn_) {
-                while (status) {
-                    usleep(cfg_.msPause_ * 1000);
-                    devStateGlobal_.sample();
-                    // logPowerToFile();
-                    logger_.logPowerLogLine(devStateGlobal_, devStateGlobal_.getCurrentPowerAndPerf());
-                    waitpid(childProcId, &status, WNOHANG);
-                }
-            }
-        }
-    } else {
-        std::cerr << "fork failed" << std::endl;
-        // TODO: handle errors
-        // return 1;
+    if (fd < 0)
+    {
+        perror("open");
+        std::abort();
     }
+    pid_t childProcId = fork();
+
+    if (childProcId < 0)
+    {
+        std::cerr << "fork failed\n";
+        perror("fork");
+        close(fd);
+        return;
+    }
+
+    if (childProcId == 0) {
+        // Child process
+        int ret = mainAppProcess(argv, fd);
+        std::exit(ret);
+    }
+    // Parent process
+    int status;
+    pid_t result;
+    while (true) {
+        result = waitpid(childProcId, &status, WNOHANG);
+        if (result == 0) {
+            // child alive - monitored app is running
+            usleep(cfg_.msPause_ * 1000);
+            devStateGlobal_.sample();
+            logger_.logPowerLogLine(devStateGlobal_, devStateGlobal_.getCurrentPowerAndPerf());
+        } else if (result == -1) {
+            // waitpid error
+            perror("waitpid");
+            break;
+        } else {
+            // child finished
+            if (WIFEXITED(status)) {
+                int exitCode = WEXITSTATUS(status);
+                if (exitCode != 0)
+                {
+                    // child process failed for some reason so we may stop the STEP application
+                    std::cout << "Terminating StEP due to unsuccesful monitored app execution (exit code: " << exitCode << ")\n";
+                    std::exit(exitCode);
+                }
+            } else if (WIFSIGNALED(status)) {
+                int sig = WTERMSIG(status);
+                std::cout << "Child was killed by signal " << sig << "\n";
+            } else {
+                std::cout << "Child ended unexpectedly\n";
+            }
+            break;
+        }
+    }
+
+    close(fd);
 }
 
 PowAndPerfResult Eco::checkPowerAndPerformance(int usPeriod)
@@ -271,7 +302,7 @@ int& Eco::adjustHighPowLimit(PowAndPerfResult firstResult, int& currHighLimit_uW
     return currHighLimit_uW;
 }
 
-void Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor)
+int Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor)
 {
     if (dup2(stdoutFileDescriptor, 1) < 0) {
         perror("dup2");
@@ -281,6 +312,7 @@ void Eco::mainAppProcess(char* const* argv, int& stdoutFileDescriptor)
 
     int execStatus = execvp(argv[1], argv+1);
     validateExecStatus(execStatus);
+    return execStatus;
 }
 
 FinalPowerAndPerfResult Eco::runAppWithSearch(
@@ -400,10 +432,15 @@ FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
                                 );
 }
 
-FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int numIterations) {
+FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int numIterations, std::optional<std::reference_wrapper<std::stringstream>> stream) {
     FinalPowerAndPerfResult sum;
     for(auto i = 0; i < cfg_.numIterations_; i++) {
-        sum += runAppWithSampling(argv);
+        const auto tmp = runAppWithSampling(argv);
+        if (stream.has_value())
+        {
+            stream.value().get() << "# " << std::fixed << std::setprecision(3) << tmp << "\n";
+        }
+        sum += tmp;
         std::cout << "*" << std::flush;
     }
     std::cout << FLUSH_AND_RETURN;
@@ -499,7 +536,7 @@ void Eco::staticEnergyProfiler(char* const* argv, int argc)
     auto powerLimitsVec = prepareListOfPowerCapsInMicroWatts();
     for (auto& currentLimit : powerLimitsVec) {
         device_->setPowerLimitInMicroWatts(currentLimit);
-        auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_);
+        auto avResult = multipleAppRunAndPowerSample(argv, cfg_.numIterations_, stream);
         auto k = getK();
         auto mPlus = EnergyTimeResult(avResult.energy,
                                         avResult.time_.totalTime_,
