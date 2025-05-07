@@ -102,7 +102,7 @@ std::vector<int> Eco::prepareListOfPowerCapsInMicroWatts(/*Domain dom*/) { // do
     unsigned highPowLimit_uW = minmax.second * 1000000;
 
     int step = ((highPowLimit_uW - lowPowLimit_uW)/ 100) * cfg_.percentStep_;
-    for (int limit_uW = highPowLimit_uW; limit_uW > lowPowLimit_uW; limit_uW -= step) {
+    for (int limit_uW = highPowLimit_uW; limit_uW >= lowPowLimit_uW; limit_uW -= step) {
         powerLimitsVec.push_back(limit_uW);
     }
     std::cout << "Vector generated, length: " << powerLimitsVec.size() << "\n";
@@ -417,7 +417,7 @@ FinalPowerAndPerfResult Eco::runAppWithSampling(char* const* argv, int argc) {
     reportResult();
     double totalTimeInSeconds = devStateGlobal_.getTimeSinceReset<std::chrono::milliseconds>() / 1000.0;
 
-    return FinalPowerAndPerfResult(device_->getMinMaxLimitInWatts().second,
+    return FinalPowerAndPerfResult(device_->getPowerLimitInWatts(),
                                 devStateGlobal_.getEnergySinceReset(),
                                 devStateGlobal_.getEnergySinceReset() / totalTimeInSeconds,
                                 // devStateGlobal_.getEnergySinceReset(Domain::PP0) / totalTimeInSeconds,
@@ -441,7 +441,6 @@ FinalPowerAndPerfResult Eco::multipleAppRunAndPowerSample(char* const* argv, int
             stream.value().get() << "# " << std::fixed << std::setprecision(3) << tmp << "\n";
         }
         sum += tmp;
-        std::cout << "*" << std::flush;
     }
     std::cout << FLUSH_AND_RETURN;
     sum /= cfg_.numIterations_;
