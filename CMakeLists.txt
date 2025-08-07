@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 17)
 if(WITH_XPU)
        add_definitions(-DWITH_XPU)
 else()
-      include_directories(/usr/local/cuda/include)
+      include_directories(/usr/local/cuda-12.8/include)
 
 endif()
 
@@ -52,7 +52,8 @@ if(DEFINED WITH_XPU)
 else()
        set(COMMON_LIBS
                ${COMMON_LIBS}
-               nvidia-ml
+               /usr/local/cuda-12.8/targets/x86_64-linux/lib/stubs/libnvidia-ml.a
+               #nvidia-ml
                cuda
                )
 endif()

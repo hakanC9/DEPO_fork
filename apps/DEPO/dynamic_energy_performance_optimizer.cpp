@@ -171,8 +171,32 @@ int main (int argc, char *argv[])
         ("gpu", po::value<int>(), "use GPU backend for card with specified ID")
     ;
     po::variables_map optionsMap;
-    po::store(po::parse_command_line(argc, argv, desc), optionsMap);
+    po::parsed_options parsed = po::command_line_parser(argc, argv)
+                                    .options(desc)
+                                    .allow_unregistered()
+                                    .run();
+
+    po::store(parsed, optionsMap);
     po::notify(optionsMap);
+
+    // Get the rest of the arguments
+    std::vector<std::string> unrecognizedArgs = po::collect_unrecognized(parsed.options, po::include_positional);
+
+    std::vector<std::string> fullArgs;
+    for (const auto& arg : unrecognizedArgs) {
+        fullArgs.push_back(arg);
+    }
+
+    // Copy to char* array
+    std::vector<char*> newArgv;
+    newArgv.push_back(argv[0]);  // Keep ./DEPO as argv[0]
+    for (auto& arg : fullArgs) {
+        newArgv.push_back(&arg[0]);
+    }
+    newArgv.push_back(nullptr);  // null-terminate
+
+    argc = static_cast<int>(newArgv.size() - 1);
+    argv = newArgv.data();
 
     // print help and exit
     if (optionsMap.count("help"))
@@ -183,7 +207,7 @@ int main (int argc, char *argv[])
     // read metric and search algorithm
     std::tie(metric, search) = parseArgs(optionsMap);
     std::optional<int> gpuID = checkIfDeviceTypeIsGPU(optionsMap);
-    cleanArgv(argc, argv);
+    //cleanArgv(argc, argv);
 
 
     std::shared_ptr<Device> device;

@@ -35,7 +35,7 @@ PlotBuilder::~PlotBuilder() {
 }
 
 void PlotBuilder::initPlot(int width, int height) {
-    *gp_ << "set terminal png size " << width << "," << height << " enhanced font \"Helvetica,22\"\n";
+    *gp_ << "set terminal png size " << width << "," << height << " enhanced\n";
     *gp_ << "set output \"" << outputFileName_ << "\"\n";
     *gp_ << "set key horizontal font \",15\"\n";
     *gp_ << "set grid\n";
